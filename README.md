@@ -43,15 +43,15 @@ A toggle for how long your drawing lasts.
 - **Fading** → older strokes gradually fade away, so the figure is ephemeral and
   always in motion. How fast they fade is set by the next slider.
 
-### Decay rate
+### Fade rate
 Controls the fade speed when **Persistence** is set to *fading* (it's greyed out
-while you're in *building up* mode). Range **0–1**:
+while you're in *building up* mode). Range **0–1** (default **0.10**):
 
 - **0** → never fades (identical to *building up*).
 - Higher → strokes vanish faster. Around **1** a stroke is gone in well under a
   second, leaving a comet-like trail as you draw.
 
-> Persistence and Decay work together: *building up* is really just decay = 0.
+> Persistence and Fade rate work together: *building up* is really just fade = 0.
 > The toggle is the quick switch; the slider is the fine-tune.
 
 ### Global spin
@@ -94,6 +94,14 @@ Visible only in **Palette** color mode. Five curated presets:
 | gold | **Mono-gold** | near-single-hue gold |
 | blue → indigo | **Ocean** | deep blues and teals |
 | pink → cyan | **Candy** | bright, playful, wide range |
+
+### Blend mode
+How overlapping arms combine where they cross:
+
+- **Glow** (default) → additive blending. Overlaps add up and **bloom to white**
+  at the bright center — punchy and luminous.
+- **Soft** → screen blending. Overlaps still brighten, but gently, so the center
+  keeps its color instead of blowing out — a calmer, more pastel look.
 
 ### Clear
 Wipes the canvas with a short **fade-to-empty animation** (not a hard cut).
@@ -149,7 +157,7 @@ There's a small global hook, `window.UI`, usable from the browser console (it's
 also what the test harness drives):
 
 ```js
-UI.set({ folds: 8, mirror: true, persistent: false, decay: 0.4,
+UI.set({ folds: 8, mirror: true, persistent: false, fade: 0.4,
          spin: -0.3, brush: 0.7, colorMode: 'palette', palette: 'ocean' });
 UI.get();    // current settings as an object
 UI.clear();  // trigger the clear animation
@@ -161,11 +169,12 @@ UI.count();  // number of stored stroke segments
 | `folds` | 3–16 | fold count |
 | `mirror` | boolean | mirror symmetry on/off |
 | `persistent` | boolean | true = building up, false = fading |
-| `decay` | 0–1 | fade rate (when not persistent) |
+| `fade` | 0–1 | fade rate (when not persistent) |
 | `spin` | −1…+1 | global spin speed/direction |
 | `brush` | 0–1 | base stroke width |
 | `colorMode` | `'palette'` \| `'speed'` \| `'audio'` | color source |
 | `palette` | `'aurora'` \| `'ember'` \| `'mono-gold'` \| `'ocean'` \| `'candy'` | active preset |
+| `blend` | `'lighter'` \| `'screen'` | blend mode (Glow / Soft) |
 
 ---
 
