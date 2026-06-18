@@ -1,4 +1,4 @@
-# Kaleidoscope Drawing Toy — Implementation Spec
+# Whorl Drawing Toy — Implementation Spec
 
 A browser-based, interactive symmetric-drawing experience inspired by the
 end-of-level "sacred geometry" sequences in *Monument Valley*. The user drags

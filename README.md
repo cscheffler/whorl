@@ -1,4 +1,4 @@
-# Kaleidoscope
+# Whorl
 
 A browser-based, interactive symmetric-drawing toy. Drag (mouse, touch, or pen)
 and your stroke is mirrored and rotated around the center to grow evolving star
@@ -107,7 +107,7 @@ How overlapping arms combine where they cross:
 Wipes the canvas with a short **fade-to-empty animation** (not a hard cut).
 
 ### Save PNG
-Exports the current canvas as a PNG download (`kaleidoscope-<timestamp>.png`).
+Exports the current canvas as a PNG download (`whorl-<timestamp>.png`).
 
 ---
 
@@ -197,7 +197,7 @@ UI.count();  // number of stored stroke segments
 ```
 index.html             the entire app (HTML + CSS + JS, self-contained)
 README.md              this file
-kaleidoscope-spec.md   the original design spec
+whorl-spec.md          the original design spec
 TESTING.md             how the visual test harness works
 tools/shoot.py         Playwright screenshot harness (drives the app, captures PNGs)
 tools/shots/           generated screenshots (gitignored)

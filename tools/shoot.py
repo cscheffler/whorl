@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-shoot.py — visual test harness for the Kaleidoscope toy.
+shoot.py — visual test harness for the Whorl toy.
 
 Loads a static HTML file over file://, optionally runs setup JS (to set
 controls), performs a scripted pointer gesture (so the canvas actually
@@ -32,7 +32,7 @@ def gesture_points(name, w, h):
     cx, cy = w / 2, h / 2
     pts = []
     if name == "spiral":
-        # Expanding spiral from near-center outward — great kaleidoscope fodder,
+        # Expanding spiral from near-center outward — great whorl fodder,
         # and the changing radius/speed exercises velocity-driven width.
         turns = 3.0
         n = 140
