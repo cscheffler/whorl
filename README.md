@@ -130,6 +130,20 @@ A few things to know:
 
 ---
 
+## Idle autopilot
+
+Leave it alone in **fading** mode and it turns into a screensaver. Once your
+pattern has fully faded away and the canvas has sat empty for **15 seconds**, a
+synthetic "pen" starts drawing on its own, drifting around the center to grow an
+ever-changing mandala that keeps gently fading.
+
+- It only runs in **fading** mode — in *building up* mode it stays off, so your
+  lasting work is never disturbed.
+- **Touch or drag to take over.** The moment you draw, autopilot stops and leaves
+  its pattern on screen; from there you can add to it, hit Clear, or just let it
+  fade.
+- It's disabled under the "reduce motion" system setting.
+
 ## Tips
 
 - **Draw slowly** for bold, glowing lines; **flick quickly** for delicate
