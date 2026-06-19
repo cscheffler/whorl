@@ -22,7 +22,7 @@ Everything below lives in that gear panel.
 
 ### Fold count
 How many rotational copies of your stroke are drawn around the center, from
-**3** to **16** (default **6**). Low numbers give bold, chunky stars; high
+**3** to **16** (default **7**). Low numbers give bold, chunky stars; high
 numbers give fine, lacy mandalas. This is the single biggest lever on the overall
 shape.
 
@@ -38,14 +38,14 @@ A toggle that decides whether each rotated copy is *also* reflected.
 ### Persistence
 A toggle for how long your drawing lasts.
 
-- **Building up** (default) → strokes accumulate into a lasting mandala; nothing
+- **Building up** → strokes accumulate into a lasting mandala; nothing
   is erased until you Clear.
-- **Fading** → older strokes gradually fade away, so the figure is ephemeral and
-  always in motion. How fast they fade is set by the next slider.
+- **Fading** (default) → older strokes gradually fade away, so the figure is
+  ephemeral and always in motion. How fast they fade is set by the next slider.
 
 ### Fade rate
 Controls the fade speed when **Persistence** is set to *fading* (it's greyed out
-while you're in *building up* mode). Range **0–1** (default **0.10**):
+while you're in *building up* mode). Range **0–1** (default **0.05**):
 
 - **0** → never fades (identical to *building up*).
 - Higher → strokes vanish faster. Around **1** a stroke is gone in well under a
