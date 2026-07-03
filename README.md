@@ -282,8 +282,10 @@ unlock at ⭐⭐; three stars need ≥90% first-try accuracy *and* quick recall.
 Speed earns bonus sparks but slowness is never punished, and every wrong answer
 is explained with a picture (ten-frames, number lines, arrays…) then re-asked.
 
-- **Read-aloud:** questions and feedback are narrated (SpeechSynthesis, en-GB
-  voice when available) — toggle with 🗣️. Sound effects are synthesised
+- **Read-aloud:** questions and feedback are narrated (SpeechSynthesis). It
+  picks the best British voice on offer — in Chrome that's the high-quality
+  "Google UK English" voice, falling back to the best local en-GB voice
+  (offline too) — toggle with 🗣️. Sound effects are synthesised
   (Web Audio) — toggle with 🔊. Both settings persist.
 - **Grown-ups' corner:** press-and-hold the ⚙️ gear on the home screen for the
   progress dashboard (per-level stars, per-fact strength heatmap, accuracy &
