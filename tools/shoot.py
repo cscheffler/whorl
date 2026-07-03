@@ -10,8 +10,8 @@ Console logs and uncaught page errors are captured and printed, so JS
 exceptions surface here instead of failing silently.
 
 Examples:
-    venv/bin/python tools/shoot.py --url index.html --out tools/shots/default.png
-    venv/bin/python tools/shoot.py --url index.html --gesture spiral --touch \
+    venv/bin/python tools/shoot.py --url whorl.html --out tools/shots/default.png
+    venv/bin/python tools/shoot.py --url whorl.html --gesture spiral --touch \
         --setup "UI.set({folds:8, mirror:true})" --out tools/shots/snowflake.png
 
 The --setup JS is optional and app-specific; it only matters once the app
@@ -64,6 +64,34 @@ def gesture_points(name, w, h):
             t = i / n * 2 * math.pi
             pts.append((cx + w * 0.28 * math.sin(3 * t),
                         cy + h * 0.28 * math.sin(2 * t)))
+    elif name == "iso-l":
+        # Escher: an L along two isometric screen axes — down-right (+x) then
+        # down-left (+y). Deliberately starts a few degrees off the true 30deg
+        # iso axis so the app's axis-snapping has something to correct.
+        seg = min(w, h) * 0.28
+        a30, a150 = math.radians(34), math.radians(146)   # a touch off-axis
+        sx, sy = cx - seg * 0.5, cy - seg * 0.3
+        n = 40
+        for i in range(n + 1):
+            pts.append((sx + seg * (i / n) * math.cos(a30),
+                        sy + seg * (i / n) * math.sin(a30)))
+        ex, ey = pts[-1]
+        for i in range(1, n + 1):
+            pts.append((ex + seg * (i / n) * math.cos(a150),
+                        ey + seg * (i / n) * math.sin(a150)))
+    elif name == "iso-stairs":
+        # Escher: alternate ground runs (down-right) and vertical climbs to
+        # exercise the staircase look. Pair with --setup "UI.set({elevation:...})"
+        # only if you want the vertical legs interpreted as z; otherwise this is
+        # just a zig-zag that the snapper resolves to x/y runs.
+        seg = min(w, h) * 0.16
+        x, y = cx - seg * 2, cy
+        pts.append((x, y))
+        for _ in range(4):
+            x += seg * math.cos(math.radians(30)); y += seg * math.sin(math.radians(30))
+            pts.append((x, y))
+            y -= seg                       # straight up the screen
+            pts.append((x, y))
     else:
         raise SystemExit(f"unknown gesture: {name}")
     return pts
@@ -120,6 +148,15 @@ def run(args):
                 page.wait_for_timeout(args.step_ms)
             page.mouse.up()
 
+        # Optional taps (a down/up with no move) — e.g. to flip an Escher
+        # crossing's over/under. Format: "x,y" repeated via multiple --tap flags.
+        for spec in args.tap:
+            tx, ty = (float(v) for v in spec.split(","))
+            page.mouse.move(tx, ty)
+            page.mouse.down()
+            page.mouse.up()
+            page.wait_for_timeout(80)
+
         page.wait_for_timeout(args.settle)
         page.screenshot(path=str(out))
         browser.close()
@@ -141,12 +178,16 @@ def main():
     ap.add_argument("--dpr", type=float, default=2.0, help="devicePixelRatio")
     ap.add_argument("--touch", action="store_true", help="emulate a touch device")
     ap.add_argument("--gesture", default="spiral",
-                    choices=["spiral", "arc", "line", "scribble", "none"])
+                    choices=["spiral", "arc", "line", "scribble",
+                             "iso-l", "iso-stairs", "none"])
     ap.add_argument("--step-ms", type=int, default=6,
                     help="pause between pointer-move steps")
     ap.add_argument("--settle", type=int, default=600,
                     help="ms to wait after gesture before screenshot")
     ap.add_argument("--setup", default="", help="JS to eval before gesture")
+    ap.add_argument("--tap", action="append", default=[], metavar="X,Y",
+                    help="tap (down/up, no move) at screen X,Y after the "
+                         "gesture; repeatable. Used for Escher crossing flips.")
     run(ap.parse_args())
 
 

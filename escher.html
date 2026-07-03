@@ -1,0 +1,1012 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Escher</title>
+<style>
+  :root{
+    --panel-bg: rgba(16,18,28,0.82);
+    --panel-br: rgba(150,170,220,0.14);
+    --txt: #f0ece6;
+    --txt-dim: #aaa2b6;
+    --accent: #f0a07a;
+    --accent2: #c79bff;
+  }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{ margin:0; height:100%; background:#15121c; overflow:hidden;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--txt); touch-action:none; }
+  #stage{ position:fixed; inset:0; }
+  canvas{ display:block; width:100%; height:100%; touch-action:none; }
+
+  /* Fade-out hint shown until first touch */
+  #hint{ position:fixed; left:50%; bottom:14%; transform:translateX(-50%);
+    color:var(--txt-dim); font-size:15px; letter-spacing:.04em; pointer-events:none;
+    transition:opacity .8s ease; text-shadow:0 1px 12px rgba(0,0,0,.6); text-align:center; }
+
+  /* Gear / toggle button */
+  #gear{ position:fixed; top:max(12px,env(safe-area-inset-top)); right:14px; z-index:20;
+    width:46px; height:46px; border-radius:50%; border:1px solid var(--panel-br);
+    background:var(--panel-bg); color:var(--txt); cursor:pointer;
+    backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    display:grid; place-items:center; transition:transform .25s ease, background .2s; }
+  #gear:hover{ background:rgba(28,32,46,0.9); }
+  #gear:active{ transform:scale(.92); }
+  #gear svg{ width:22px; height:22px; }
+
+  /* Control panel */
+  #panel{ position:fixed; z-index:15; color:var(--txt);
+    background:var(--panel-bg); border:1px solid var(--panel-br);
+    backdrop-filter:blur(18px) saturate(1.3); -webkit-backdrop-filter:blur(18px) saturate(1.3);
+    transition:transform .32s cubic-bezier(.22,.8,.32,1), opacity .25s ease; }
+
+  /* Desktop: card under the gear, top-right */
+  @media (min-width:641px){
+    #panel{ top:max(12px,env(safe-area-inset-top)); right:14px; width:300px;
+      max-height:calc(100vh - 24px); overflow-y:auto; padding:54px 18px 18px;
+      border-radius:18px; transform-origin:top right; }
+    #panel.hidden{ opacity:0; transform:translateY(-8px) scale(.96); pointer-events:none; }
+  }
+  /* Mobile: bottom sheet sliding up */
+  @media (max-width:640px){
+    #panel{ left:0; right:0; bottom:0; padding:18px 18px calc(20px + env(safe-area-inset-bottom));
+      border-radius:20px 20px 0 0; max-height:78vh; overflow-y:auto; }
+    #panel.hidden{ transform:translateY(105%); pointer-events:none; }
+    #gear{ top:auto; bottom:calc(16px + env(safe-area-inset-bottom)); }
+  }
+
+  .row{ margin:0 0 16px; }
+  .row:last-child{ margin-bottom:0; }
+  .lbl{ display:flex; justify-content:space-between; align-items:baseline;
+    font-size:12.5px; letter-spacing:.05em; text-transform:uppercase; color:var(--txt-dim);
+    margin-bottom:8px; }
+  .lbl .val{ color:var(--txt); font-variant-numeric:tabular-nums; text-transform:none; letter-spacing:0; }
+  h1{ font-size:14px; letter-spacing:.16em; text-transform:uppercase; color:var(--txt);
+    margin:0 0 18px; font-weight:600; opacity:.85; }
+
+  input[type=range]{ -webkit-appearance:none; appearance:none; width:100%; height:4px;
+    border-radius:4px; background:rgba(150,170,220,0.22); outline:none; margin:0; }
+  input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; width:18px; height:18px;
+    border-radius:50%; background:var(--accent); cursor:pointer; border:2px solid #0b0e18;
+    box-shadow:0 0 10px rgba(240,160,122,.6); }
+  input[type=range]::-moz-range-thumb{ width:18px; height:18px; border-radius:50%;
+    background:var(--accent); cursor:pointer; border:2px solid #0b0e18; }
+  input[type=range]:disabled{ opacity:.4; }
+
+  /* Toggle switch */
+  .switch{ position:relative; display:inline-flex; align-items:center; cursor:pointer; }
+  .switch input{ position:absolute; opacity:0; }
+  .track{ width:46px; height:26px; border-radius:14px; background:rgba(150,170,220,0.2);
+    transition:background .2s; position:relative; }
+  .track::after{ content:""; position:absolute; top:3px; left:3px; width:20px; height:20px;
+    border-radius:50%; background:#f0ece6; transition:transform .2s; }
+  .switch input:checked + .track{ background:var(--accent); }
+  .switch input:checked + .track::after{ transform:translateX(20px); }
+  .toggle-row{ display:flex; justify-content:space-between; align-items:center; }
+  .toggle-row .name{ font-size:13.5px; }
+  .toggle-row .sub{ font-size:11px; color:var(--txt-dim); }
+
+  /* Palette swatches */
+  #palette{ display:flex; gap:8px; flex-wrap:wrap; }
+  #palette button{ flex:1 1 18%; height:30px; border-radius:9px; border:2px solid transparent;
+    cursor:pointer; padding:0; overflow:hidden; }
+  #palette button.active{ border-color:#fff; box-shadow:0 0 0 1px rgba(0,0,0,.4); }
+
+  .btns{ display:flex; gap:10px; }
+  .btns button{ flex:1; padding:11px; border-radius:11px; border:1px solid var(--panel-br);
+    background:rgba(150,170,220,0.1); color:var(--txt); font-size:13px; cursor:pointer; transition:.18s; }
+  .btns button:hover{ background:rgba(150,170,220,0.2); }
+  .btns button:active{ transform:scale(.97); }
+
+  .note{ font-size:11.5px; color:var(--txt-dim); margin-top:-6px; }
+</style>
+</head>
+<body>
+<div id="stage"><canvas id="cv"></canvas></div>
+<div id="hint">drag to build &middot; tap a crossing to flip it</div>
+
+<button id="gear" aria-label="Toggle controls">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="3"></circle>
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+  </svg>
+</button>
+
+<div id="panel" class="hidden">
+  <h1>Escher</h1>
+
+  <div class="row">
+    <div class="lbl">Palette</div>
+    <div id="palette"></div>
+  </div>
+
+  <div class="row toggle-row">
+    <div><div class="name">Build mode</div><div class="sub" id="elevSub">ground &mdash; lay flat</div></div>
+    <label class="switch"><input type="checkbox" id="elev"><span class="track"></span></label>
+  </div>
+
+  <div class="row">
+    <div class="lbl">Beam width <span class="val" id="widthVal">mid</span></div>
+    <input type="range" id="width" min="0" max="1" step="0.01" value="0.5">
+  </div>
+
+  <div class="row">
+    <div class="lbl">Beam height <span class="val" id="heightVal">mid</span></div>
+    <input type="range" id="height" min="0" max="1" step="0.01" value="0.5">
+  </div>
+
+  <div class="row">
+    <div class="lbl">Snap strength <span class="val" id="snapVal">1.00</span></div>
+    <input type="range" id="snap" min="0" max="1" step="0.01" value="1">
+  </div>
+
+  <div class="row">
+    <div class="lbl">Hue drift <span class="val" id="driftVal">0.00</span></div>
+    <input type="range" id="drift" min="0" max="1" step="0.01" value="0">
+  </div>
+
+  <div class="row btns">
+    <button id="undo">Undo</button>
+    <button id="clear">Clear</button>
+    <button id="save">Save PNG</button>
+  </div>
+  <div class="note">Tap a crossing to flip its over/under.</div>
+</div>
+
+<script>
+(() => {
+"use strict";
+
+// ===========================================================================
+// State
+// ===========================================================================
+const state = {
+  palette: "coral",
+  width: 0.5,     // 0..1 -> beam cross-section width (world units)
+  height: 0.5,    // 0..1 -> beam height (world units)
+  snap: 1,        // 0 = free curve, 1 = hard-snap to iso axes
+  drift: 0,       // 0..1 hue shift along path length
+  elevation: false, // false = ground plane (x/y), true = build up/down (z)
+};
+
+// Curated Monument-Valley-ish triads. Each face shade is stored as HSL so the
+// hue-drift slider can rotate it per segment. top = brightest, mid = right-face,
+// dark = left-face. bg = canvas background.
+const PALETTES = {
+  coral:    { bg:"#2b2030", top:{h:6,s:90,l:78},   mid:{h:354,s:64,l:64}, dark:{h:344,s:42,l:48} },
+  teal:     { bg:"#102a2c", top:{h:168,s:55,l:74}, mid:{h:172,s:46,l:55}, dark:{h:178,s:42,l:38} },
+  lavender: { bg:"#221d33", top:{h:264,s:60,l:82}, mid:{h:262,s:44,l:67}, dark:{h:258,s:34,l:50} },
+  peach:    { bg:"#2c241c", top:{h:34,s:92,l:78},  mid:{h:26,s:74,l:64},  dark:{h:18,s:54,l:48} },
+  mint:     { bg:"#1b2a22", top:{h:138,s:48,l:80}, mid:{h:146,s:40,l:62}, dark:{h:156,s:36,l:44} },
+};
+const PALETTE_ORDER = ["coral","teal","lavender","peach","mint"];
+
+const MAX_SEGMENTS = 2000;
+const DRIFT_DEG = 7;        // degrees of hue shift per segment at drift = 1
+const TAP_PX = 6;           // movement under this (CSS px) counts as a tap
+const CONTINUE_UNITS = 1.1; // start a drag within this many world units of the
+                            // last tip and the ribbon continues; else a new path
+const MIN_TURN_UNITS = 0.45; // a direction change must accumulate this much off-
+                            // axis travel before it commits a corner. Debounces
+                            // finger-lift wobble that would drop a stray block.
+const MAGNET_UNITS = 1.0;   // bring the head within this of the start and the
+                            // ribbon snaps shut (magnetic loop closure).
+const DEPART_UNITS = 1.7;   // the head must first leave the start by this much
+                            // before the magnet arms (avoids snapping on launch).
+const cos30 = Math.cos(Math.PI / 6);
+const sin30 = 0.5;
+
+// World axis unit vectors, keyed by name (signed).
+const AXES = {
+  x:  {x: 1, y: 0, z: 0}, "-x": {x:-1, y: 0, z: 0},
+  y:  {x: 0, y: 1, z: 0}, "-y": {x: 0, y:-1, z: 0},
+  z:  {x: 0, y: 0, z: 1}, "-z": {x: 0, y: 0, z:-1},
+};
+
+// ===========================================================================
+// Vector helpers
+// ===========================================================================
+const add   = (a, b) => ({x:a.x+b.x, y:a.y+b.y, z:a.z+b.z});
+const sub   = (a, b) => ({x:a.x-b.x, y:a.y-b.y, z:a.z-b.z});
+const scale = (a, s) => ({x:a.x*s,   y:a.y*s,   z:a.z*s});
+const dot   = (a, b) => a.x*b.x + a.y*b.y + a.z*b.z;
+const len3  = (a)    => Math.hypot(a.x, a.y, a.z);
+const norm3 = (a)    => { const l = len3(a) || 1; return {x:a.x/l, y:a.y/l, z:a.z/l}; };
+const cross = (a, b) => ({
+  x: a.y*b.z - a.z*b.y,
+  y: a.z*b.x - a.x*b.z,
+  z: a.x*b.y - a.y*b.x,
+});
+const clamp = (v, lo, hi) => v < lo ? lo : v > hi ? hi : v;
+
+// ===========================================================================
+// Canvas / projection
+// ===========================================================================
+const cv  = document.getElementById("cv");
+const ctx = cv.getContext("2d");
+let W = 0, H = 0, dpr = 1, S = 60, ORIGIN_X = 0, ORIGIN_Y = 0;
+let dirty = true;
+
+function resize(){
+  W = window.innerWidth; H = window.innerHeight;
+  dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+  cv.width = Math.round(W * dpr);
+  cv.height = Math.round(H * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ORIGIN_X = W / 2;
+  ORIGIN_Y = H / 2;
+  S = Math.min(W, H) / 12;     // world unit -> screen px
+  dirty = true;
+}
+resize();
+window.addEventListener("resize", resize);
+
+// World (x,y,z) -> screen (sx,sy). Fixed isometric, no perspective.
+function project(p){
+  return {
+    x: ORIGIN_X + S * (p.x - p.y) * cos30,
+    y: ORIGIN_Y + S * ((p.x + p.y) * sin30 - p.z),
+  };
+}
+// Screen point -> world point on the ground plane (z = 0).
+function groundUnproject(sx, sy){
+  const a = (sx - ORIGIN_X) / (S * cos30);   // x - y
+  const b = (sy - ORIGIN_Y) / (S * sin30);   // x + y
+  return {x: (a + b) / 2, y: (b - a) / 2, z: 0};
+}
+// Screen delta -> world delta on the ground plane.
+function screenDeltaToGround(ddx, ddy){
+  const a = ddx / (S * cos30);
+  const b = ddy / (S * sin30);
+  return {x: (a + b) / 2, y: (b - a) / 2, z: 0};
+}
+
+// ===========================================================================
+// Geometry model
+// ===========================================================================
+// A beam segment: prism from world point a -> b, with cross-section w (width)
+// and h (height). A joint: an axis-aligned cube centered at p, carrying a segIdx
+// for hue drift.
+let segments = [];   // committed beams
+let joints   = [];   // mitered corner cubes
+let flips    = [];   // flipped crossings: {a, b} beam refs whose over/under is
+                     // swapped *locally* at their crossing (see the flip pass)
+let segCounter = 0;
+
+let head = null;        // current world position (tip of the ribbon)
+let pathStart = null;   // first world point, for auto-loop closure
+
+const beamW = () => 0.32 + state.width  * 1.05;   // ~0.32 .. 1.37 world units
+const beamH = () => 0.32 + state.height * 1.05;
+
+function pushSegment(seg){
+  seg.segIdx = segCounter++;
+  segments.push(seg);
+  if (segments.length > MAX_SEGMENTS){
+    const removed = segments.shift();
+    flips = flips.filter(f => f.a !== removed && f.b !== removed);
+  }
+  return seg;
+}
+// A joint cube sits at a corner shared by beams b1 and b2 (either may be null at
+// the ends of a path). It keeps references to them so its hue can interpolate
+// between their colours (see jointSegIdx).
+function addJoint(p, b1, b2, w, h){
+  joints.push({c:{...p}, w: w != null ? w : beamW(), h: h != null ? h : beamH(),
+               segIdx:segCounter, b1:b1 || null, b2:b2 || null});
+  if (joints.length > MAX_SEGMENTS) joints.shift();
+}
+// Hue index for a corner cube: interpolate between its two beams so the drift
+// stays continuous along the ribbon. Non-consecutive beams (the start↔end closing
+// corner) take the later hue, leaving a single clean head/tail discontinuity.
+const jointSegIdx = (j) => {
+  // b2 can be the live curBeam mid-stroke, which has no segIdx yet — fall back to
+  // the other beam so the colour never goes NaN (which breaks the fill entirely).
+  const i1 = j.b1 ? j.b1.segIdx : undefined;
+  const i2 = j.b2 ? j.b2.segIdx : undefined;
+  if (i1 != null && i2 != null){
+    const d = Math.abs(i1 - i2);
+    return d <= 1 ? (i1 + i2) / 2 : Math.max(i1, i2);
+  }
+  return i1 != null ? i1 : (i2 != null ? i2 : j.segIdx);
+};
+
+// Nearest allowed signed axis to a world step vector + the blended direction.
+function snapStep(step){
+  const allowed = state.elevation ? ["z","-z"] : ["x","-x","y","-y"];
+  let best = null, bestDot = -Infinity;
+  const u = norm3(step);
+  for (const name of allowed){
+    const d = dot(u, AXES[name]);
+    if (d > bestDot){ bestDot = d; best = name; }
+  }
+  const axisU = AXES[best];
+  // Blend raw drag direction toward the snapped axis by snap strength.
+  let dir = {
+    x: u.x + (axisU.x - u.x) * state.snap,
+    y: u.y + (axisU.y - u.y) * state.snap,
+    z: u.z + (axisU.z - u.z) * state.snap,
+  };
+  dir = norm3(dir);
+  return {axis: best, dir};
+}
+
+let curBeam = null;     // beam currently being extended during a drag
+let pendingTurn = null; // a candidate new direction awaiting enough travel to
+                        // commit a corner: {dir, accum}
+
+function advanceHead(step){
+  const dist = len3(step);
+  if (dist < 1e-4) return;
+  const {dir} = snapStep(step);
+  const adv = dot(step, dir);          // signed advance along the chosen dir
+  if (adv <= 1e-4) return;
+
+  if (!curBeam){                       // first beam of the stroke
+    curBeam = {a:{...head}, b:add(head, scale(dir, adv)), dir:{...dir}, w:beamW(), h:beamH()};
+    head = curBeam.b;
+    pendingTurn = null;
+  } else if (dot(curBeam.dir, dir) > 0.985){
+    curBeam.b = add(curBeam.b, scale(dir, adv));   // same axis: just extend
+    head = curBeam.b;
+    pendingTurn = null;                            // any wobble was transient
+  } else {
+    // Different axis. Hold the corner until enough off-axis travel accumulates,
+    // so a tiny wobble (e.g. on finger-lift) doesn't drop a joint + stub.
+    if (pendingTurn && dot(pendingTurn.dir, dir) > 0.985) pendingTurn.accum += adv;
+    else pendingTurn = {dir:{...dir}, accum:adv};
+    if (pendingTurn.accum >= MIN_TURN_UNITS){
+      const prev = commitCurBeam();
+      curBeam = {a:{...head}, b:add(head, scale(dir, pendingTurn.accum)),
+                 dir:{...dir}, w:beamW(), h:beamH()};
+      addJoint(head, prev, curBeam);   // corner cube linked to both beams
+      head = curBeam.b;
+      pendingTurn = null;
+    }
+  }
+  dirty = true;
+  trySnapClose();
+}
+function commitCurBeam(){
+  if (!curBeam) return null;
+  const seg = pushSegment(curBeam);   // push the live object so joint refs hold
+  curBeam = null;
+  return seg;
+}
+
+// Auto-loop closure: if the head returns near the start, append axis beams to
+// land exactly on it and close the ribbon.
+function closeIfNear(){
+  if (!head || !pathStart || segments.length < 2) return;
+  const d = sub(pathStart, head);
+  const dist = len3(d);
+  if (dist > 1.4) return;                       // too far -> not a closing gesture
+  const order = state.elevation ? ["z","x","y"] : ["x","y","z"];
+  const MIN_LEG = beamW() * 0.5;                 // shorter remainders are absorbed
+  let prevBeam = segments[segments.length - 1] || null;
+  if (dist >= 1e-3){                             // bridge the small remaining gap
+    for (const ax of order){
+      const v = d[ax];
+      if (Math.abs(v) < 1e-3) continue;
+      const dir = {x:0, y:0, z:0}; dir[ax] = Math.sign(v);
+      // (B) If this leg just continues the previous beam's axis, extend that beam
+      // instead of appending a stubby collinear segment + redundant joint.
+      if (prevBeam && dot(prevBeam.dir, dir) > 0.985){
+        prevBeam.b = add(prevBeam.b, scale(dir, Math.abs(v)));
+        head = {...prevBeam.b};
+        continue;
+      }
+      // (A) Don't build a sub-width perpendicular stub; the closing cube (and the
+      // exact snap to pathStart below) absorbs a remainder this small.
+      if (Math.abs(v) < MIN_LEG) continue;
+      const b = add(head, scale(dir, Math.abs(v)));
+      const beam = pushSegment({a:{...head}, b, dir, w:beamW(), h:beamH()});
+      if (prevBeam) addJoint({...head}, prevBeam, beam);
+      head = b; prevBeam = beam;
+    }
+  }
+  head = {...pathStart};
+  // Stitch the closing corner: a cube where the last beam meets the first. (When
+  // they're collinear the cube is hidden inside the beam but still hides the caps.)
+  if (prevBeam && segments[0] && prevBeam !== segments[0])
+    addJoint({...pathStart}, prevBeam, segments[0]);
+  dirty = true;
+}
+
+// (C) Magnetic loop closure. Once the head has left the start and returns within
+// MAGNET_UNITS, we *preview* a clean closure (without committing). It's shown
+// until release; pull away and it reopens. The plan adjusts the last two
+// perpendicular beams so the head lands exactly on the tail with a square corner
+// — i.e. the beam *before* the current one shifts slightly to make the ends meet.
+let armed = false;        // magnet armed (the head departed the start)
+let magnetPlan = null;    // non-null while a clean preview close is available
+
+function planClosure(){
+  if (!pathStart || !curBeam || segments.length < 3) return null;
+  const prev = segments[segments.length - 1];
+  const P = prev.dir, C = curBeam.dir;
+  if (Math.abs(dot(P, C)) > 0.05) return null;          // last corner not square
+  const a0 = prev.a, target = pathStart;
+  if (Math.abs(a0.z - target.z) > 1e-3) return null;    // keep the close planar
+  const rel = sub(target, a0);
+  const p = dot(rel, P), c = dot(rel, C);
+  if (p <= MIN_TURN_UNITS || c <= MIN_TURN_UNITS) return null; // would invert / too short
+  const corner = add(a0, scale(P, p));
+  const prevAdj = {a:{...a0}, b:{...corner}, dir:{...P}, w:prev.w, h:prev.h, segIdx:prev.segIdx};
+  const curAdj  = {a:{...corner}, b:{...target}, dir:{...C}, w:curBeam.w, h:curBeam.h, segIdx:segCounter};
+  return {
+    prevAdj, curAdj,
+    oldCornerKey: ptKey(curBeam.a),                      // corner that will move
+    cornerJoint: {c:{...corner}, w:prev.w, h:prev.h, b1:prevAdj, b2:curAdj},
+    closeJoint:  {c:{...target}, w:curBeam.w, h:curBeam.h, b1:curAdj, b2:segments[0]},
+  };
+}
+
+function trySnapClose(){
+  magnetPlan = null;
+  if (!drawing || !pathStart || !head) return;
+  const dist = len3(sub(pathStart, head));
+  if (dist > DEPART_UNITS) armed = true;     // arm as soon as the head departs,
+                                             // independent of how many beams exist
+  if (armed && segments.length >= 3 && dist <= MAGNET_UNITS) magnetPlan = planClosure();
+}
+
+function commitClosure(plan){
+  const prev = segments[segments.length - 1];
+  prev.b = {...plan.prevAdj.b};                          // shift the previous beam
+  curBeam.a = {...plan.curAdj.a};
+  curBeam.b = {...plan.curAdj.b};
+  joints = joints.filter(j => ptKey(j.c) !== plan.oldCornerKey);  // drop stale corner
+  const cur = commitCurBeam();
+  addJoint(plan.cornerJoint.c, prev, cur, prev.w, prev.h);        // moved corner
+  addJoint(plan.closeJoint.c, cur, segments[0], cur.w, cur.h);    // closing corner
+  head = {...pathStart};
+  magnetPlan = null;
+  dirty = true;
+}
+
+// ===========================================================================
+// Face building & rendering
+// ===========================================================================
+// Decide a face's shade from its outward world normal.
+function shadeFor(n){
+  if (n.z >  0.45) return "top";
+  if (n.z < -0.45) return "dark";          // underside (rarely visible)
+  return (n.x - n.y) >= 0 ? "mid" : "dark"; // screen-right vs screen-left
+}
+
+// HSL string for a shade, with hue drifted by segment index.
+function shadeColor(shade, segIdx, dl){
+  const base = PALETTES[state.palette][shade];
+  const h = base.h + state.drift * segIdx * DRIFT_DEG;
+  const l = clamp(base.l + (dl || 0), 0, 100);
+  return `hsl(${((h % 360) + 360) % 360}, ${base.s}%, ${l}%)`;
+}
+
+// Push one quad face into the render list. `beam` is the source beam (for flip
+// ordering) or null for corner cubes (which never flip).
+function pushFace(list, corners, idx, center, segIdx, beam){
+  const p0 = corners[idx[0]], p1 = corners[idx[1]], p2 = corners[idx[2]];
+  let n = norm3(cross(sub(p1, p0), sub(p2, p0)));
+  const faceC = scale(add(add(corners[idx[0]], corners[idx[1]]),
+                          add(corners[idx[2]], corners[idx[3]])), 0.25);
+  if (dot(n, sub(faceC, center)) < 0) n = scale(n, -1);   // force outward
+  list.push({
+    idx, corners,
+    shade: shadeFor(n),
+    segIdx,
+    beam: beam || null,
+    depth: faceC.x + faceC.y + faceC.z,
+  });
+}
+
+// Eight corners of a beam prism, ordered by (end, u, v) -> end*4 + u*2 + v.
+function beamCorners(a, b, w, h){
+  let dir = sub(b, a);
+  const L = len3(dir);
+  dir = L < 1e-6 ? {x:1,y:0,z:0} : scale(dir, 1 / L);
+  let wdir, hdir, wl, hl;
+  if (Math.abs(dir.z) > 0.9){           // vertical beam: footprint w x w
+    wdir = {x:1,y:0,z:0}; hdir = {x:0,y:1,z:0}; wl = w; hl = w;
+  } else {                              // horizontal beam: width across, h up
+    wdir = norm3(cross(dir, {x:0,y:0,z:1})); hdir = {x:0,y:0,z:1}; wl = w; hl = h;
+  }
+  const hw = scale(wdir, wl / 2), hh = scale(hdir, hl / 2);
+  const corners = [];
+  for (const base of [a, b])
+    for (const su of [-1, 1])
+      for (const sv of [-1, 1])
+        corners.push(add(add(base, scale(hw, su)), scale(hh, sv)));
+  return corners;
+}
+const BEAM_FACES = [
+  [0,1,3,2], [4,5,7,6],   // end caps (a, b)
+  [0,1,5,4], [2,3,7,6],   // u- , u+
+  [0,2,6,4], [1,3,7,5],   // v- , v+
+];
+// Key a world point for matching beam ends against joint centers.
+const ptKey = (p) => Math.round(p.x*100)+","+Math.round(p.y*100)+","+Math.round(p.z*100);
+
+function pushBeamFaces(list, seg, jointSet){
+  const skipA = jointSet && jointSet.has(ptKey(seg.a));
+  const skipB = jointSet && jointSet.has(ptKey(seg.b));
+  // Trim ends that meet a corner cube back by half a cube-width so the beam
+  // *abuts* the cube instead of overlapping it. Overlapping faces sort by their
+  // centroid and can poke a wrong-shade quad through the corner (and differently
+  // at different positions); abutting faces tile cleanly and are order-free.
+  let a = seg.a, b = seg.b;
+  if (skipA || skipB){
+    const v = sub(b, a), L = len3(v);
+    if (L > 1e-6){
+      const dir = scale(v, 1 / L);
+      let tA = skipA ? seg.w / 2 : 0, tB = skipB ? seg.w / 2 : 0;
+      const maxT = L * 0.8;                       // keep a sliver of the beam
+      if (tA + tB > maxT){ const k = maxT / (tA + tB); tA *= k; tB *= k; }
+      a = add(a, scale(dir, tA));
+      b = sub(b, scale(dir, tB));
+    }
+  }
+  const corners = beamCorners(a, b, seg.w, seg.h);
+  const center = scale(add(a, b), 0.5);
+  for (let i = 0; i < BEAM_FACES.length; i++){
+    if (i === 0 && skipA) continue;   // a-cap (now coplanar with the cube face)
+    if (i === 1 && skipB) continue;   // b-cap
+    pushFace(list, corners, BEAM_FACES[i], center, seg.segIdx, seg);
+  }
+}
+
+// Eight corners of an axis-aligned cube, ordered (x,y,z) -> x*4 + y*2 + z.
+function cubeCorners(c, w, h){
+  const corners = [];
+  for (const sx of [-1, 1])
+    for (const sy of [-1, 1])
+      for (const sz of [-1, 1])
+        corners.push({x:c.x + sx*w/2, y:c.y + sy*w/2, z:c.z + sz*h/2});
+  return corners;
+}
+const CUBE_FACES = [
+  [0,1,3,2], [4,5,7,6],   // x- , x+
+  [0,1,5,4], [2,3,7,6],   // y- , y+
+  [0,2,6,4], [1,3,7,5],   // z- , z+
+];
+function pushCubeFaces(list, j){
+  const corners = cubeCorners(j.c, j.w, j.h);
+  const segIdx = jointSegIdx(j);     // interpolate hue between the joined beams
+  for (const f of CUBE_FACES) pushFace(list, corners, f, j.c, segIdx);
+}
+
+const INFLATE = 0.6;   // grow each face by a sub-pixel toward its own corners so
+                       // abutting same-shade faces overlap instead of leaving a
+                       // thin anti-aliased seam (e.g. cube-top vs beam-top).
+// Paint a face: its quad inflated by INFLATE about the centroid (so abutting
+// same-shade faces overlap rather than leaving a thin anti-aliased seam) and
+// stroked in its own colour for a crisp silhouette.
+// A face's four screen points, inflated by INFLATE about their centroid (so
+// abutting same-shade faces overlap rather than leaving an anti-aliased seam).
+function facePts(f){
+  const c = f.corners, idx = f.idx;
+  const pts = [project(c[idx[0]]), project(c[idx[1]]), project(c[idx[2]]), project(c[idx[3]])];
+  let gx = 0, gy = 0;
+  for (const p of pts){ gx += p.x; gy += p.y; }
+  gx /= 4; gy /= 4;
+  return pts.map(p => {
+    const dx = p.x - gx, dy = p.y - gy, m = Math.hypot(dx, dy) || 1;
+    return {x: p.x + dx / m * INFLATE, y: p.y + dy / m * INFLATE};
+  });
+}
+function paintPoly(pts, col){
+  if (pts.length < 3) return;
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.closePath();
+  ctx.fillStyle = col;
+  ctx.fill();
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = col;   // same-colour stroke for a crisp silhouette
+  ctx.stroke();
+}
+
+// --- polygon helpers for per-crossing flip pieces ---
+function convexHull(pts){
+  pts = pts.slice().sort((a, b) => a.x - b.x || a.y - b.y);
+  const cr = (o, a, b) => (a.x-o.x)*(b.y-o.y) - (a.y-o.y)*(b.x-o.x);
+  const lo = [];
+  for (const p of pts){ while (lo.length >= 2 && cr(lo[lo.length-2], lo[lo.length-1], p) <= 0) lo.pop(); lo.push(p); }
+  const up = [];
+  for (let i = pts.length-1; i >= 0; i--){ const p = pts[i]; while (up.length >= 2 && cr(up[up.length-2], up[up.length-1], p) <= 0) up.pop(); up.push(p); }
+  lo.pop(); up.pop(); return lo.concat(up);
+}
+const polyArea = (p) => { let a = 0; for (let i = 0; i < p.length; i++){ const q = p[(i+1)%p.length]; a += p[i].x*q.y - q.x*p[i].y; } return a; };
+function inflatePoly(p, d){
+  let gx = 0, gy = 0; for (const q of p){ gx += q.x; gy += q.y; } gx /= p.length; gy /= p.length;
+  return p.map(q => { const dx = q.x-gx, dy = q.y-gy, m = Math.hypot(dx, dy) || 1; return {x: q.x + dx/m*d, y: q.y + dy/m*d}; });
+}
+// Sutherland–Hodgman: clip convex polygon `subject` to convex polygon `clip`.
+function clipPoly(subject, clip){
+  if (clip.length < 3) return subject;
+  const sgn = polyArea(clip) >= 0 ? 1 : -1;
+  let out = subject;
+  for (let i = 0; i < clip.length && out.length; i++){
+    const A = clip[i], B = clip[(i+1) % clip.length];
+    const inside = p => sgn * ((B.x-A.x)*(p.y-A.y) - (B.y-A.y)*(p.x-A.x)) >= 0;
+    const segX = (p1, p2) => {
+      const rx = p2.x-p1.x, ry = p2.y-p1.y, sx = B.x-A.x, sy = B.y-A.y;
+      const t = ((A.x-p1.x)*sy - (A.y-p1.y)*sx) / (rx*sy - ry*sx);
+      return {x: p1.x + t*rx, y: p1.y + t*ry};
+    };
+    const inp = out; out = [];
+    for (let j = 0; j < inp.length; j++){
+      const cur = inp[j], prev = inp[(j-1+inp.length) % inp.length];
+      const ci = inside(cur), pi = inside(prev);
+      if (ci){ if (!pi) out.push(segX(prev, cur)); out.push(cur); }
+      else if (pi){ out.push(segX(prev, cur)); }
+    }
+  }
+  return out;
+}
+const beamHull = (s) => inflatePoly(convexHull(beamCorners(s.a, s.b, s.w, s.h).map(project)), INFLATE);
+
+// For a flipped crossing, build the extra drawables that put the under beam on top
+// *only* in the overlap with the over beam. Each flip is independent (its pieces
+// reference only its own two beams), so crossings never affect each other, and the
+// pieces sort into the single render pass (no composite redraw -> no hairline).
+function flipPieces(fl, jointSet){
+  const A = fl.a, B = fl.b;
+  const aOver = segDepth(A) > segDepth(B) || (segDepth(A) === segDepth(B) && A.segIdx > B.segIdx);
+  const over = aOver ? A : B, under = aOver ? B : A;
+  const overlap = clipPoly(beamHull(over), beamHull(under));
+  if (overlap.length < 3) return [];
+  const of = []; pushBeamFaces(of, over, jointSet);
+  let overMax = -Infinity; for (const f of of) overMax = Math.max(overMax, f.depth);
+  const uf = []; pushBeamFaces(uf, under, jointSet);
+  uf.sort((a, b) => a.depth - b.depth);
+  const out = [];
+  uf.forEach((f, i) => {
+    const poly = clipPoly(facePts(f), overlap);
+    if (poly.length >= 3) out.push({pts: poly, depth: overMax + 0.001 + i * 1e-4, col: shadeColor(f.shade, f.segIdx, 0)});
+  });
+  return out;
+}
+
+function render(){
+  const pal = PALETTES[state.palette];
+  ctx.fillStyle = pal.bg;
+  ctx.fillRect(0, 0, W, H);
+
+  const faces = [];
+  if (magnetPlan){
+    // Preview the clean closure: swap the last beam + its corner for the adjusted
+    // pieces, drop the live curBeam, and add the moved corner + closing cubes.
+    const plan = magnetPlan;
+    const js = new Set(joints.map(j => ptKey(j.c)).filter(k => k !== plan.oldCornerKey));
+    js.add(ptKey(plan.cornerJoint.c)); js.add(ptKey(plan.closeJoint.c));
+    for (let i = 0; i < segments.length - 1; i++) pushBeamFaces(faces, segments[i], js);
+    pushBeamFaces(faces, plan.prevAdj, js);
+    pushBeamFaces(faces, plan.curAdj, js);
+    for (const j of joints) if (ptKey(j.c) !== plan.oldCornerKey) pushCubeFaces(faces, j);
+    pushCubeFaces(faces, plan.cornerJoint);
+    pushCubeFaces(faces, plan.closeJoint);
+  } else {
+    const jointSet = new Set(joints.map(j => ptKey(j.c)));
+    for (const s of segments) pushBeamFaces(faces, s, jointSet);
+    for (const j of joints)   pushCubeFaces(faces, j);
+    if (curBeam) pushBeamFaces(faces, {...curBeam, segIdx:segCounter}, jointSet);
+  }
+
+  faces.sort(faceCompare);   // far-to-near, with flipped crossings reversed
+  ctx.lineJoin = "round";
+  for (const f of faces) paintFace(f);
+
+  // Magnet hint: a ring at the start that tightens/brightens as the head nears,
+  // signalling the ribbon is about to snap shut.
+  if (drawing && armed && pathStart && head && segments.length >= 3){
+    const dist = len3(sub(pathStart, head));
+    const approach = MAGNET_UNITS * 2.2;
+    if (dist <= approach){
+      const t = clamp(1 - (dist - MAGNET_UNITS) / (approach - MAGNET_UNITS), 0, 1);
+      const p = project(pathStart);
+      const r = MAGNET_UNITS * S * (1 - 0.45 * t);
+      ctx.save();
+      ctx.globalAlpha = 0.2 + 0.55 * t;
+      ctx.strokeStyle = shadeColor("top", 0, 6);
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+}
+
+function frame(){
+  if (dirty){ render(); dirty = false; }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// ===========================================================================
+// Crossings — tap to flip over/under
+// ===========================================================================
+function pointInQuad(px, py, q0, q1, q2, q3){
+  // Point-in-polygon (ray cast) for a 4-gon given as screen points.
+  const pts = [q0, q1, q2, q3];
+  let inside = false;
+  for (let i = 0, j = 3; i < 4; j = i++){
+    const xi = pts[i].x, yi = pts[i].y, xj = pts[j].x, yj = pts[j].y;
+    if (((yi > py) !== (yj > py)) &&
+        (px < (xj - xi) * (py - yi) / (yj - yi) + xi)) inside = !inside;
+  }
+  return inside;
+}
+// Does this beam cover the screen point (any of its projected faces)?
+function beamCoversPoint(seg, px, py){
+  const corners = beamCorners(seg.a, seg.b, seg.w, seg.h).map(project);
+  for (const f of BEAM_FACES)
+    if (pointInQuad(px, py, corners[f[0]], corners[f[1]], corners[f[2]], corners[f[3]]))
+      return true;
+  return false;
+}
+const segDepth = (s) =>
+  ((s.a.x + s.b.x) + (s.a.y + s.b.y) + (s.a.z + s.b.z)) / 2;
+
+// Two beams that share an endpoint form a stable corner, not a crossing.
+const samePt = (a, b) =>
+  Math.abs(a.x-b.x) < 1e-4 && Math.abs(a.y-b.y) < 1e-4 && Math.abs(a.z-b.z) < 1e-4;
+const connected = (s, o) =>
+  samePt(s.a, o.a) || samePt(s.a, o.b) || samePt(s.b, o.a) || samePt(s.b, o.b);
+
+function tapAt(px, py){
+  const hits = segments.filter(s => beamCoversPoint(s, px, py));
+  if (hits.length < 2) return false;
+  hits.sort((a, b) => segDepth(b) - segDepth(a));   // frontmost first
+  // A genuine crossing is two overlapping beams that are NOT connected (a corner's
+  // two beams share a vertex — leave it stable). Pick the frontmost such pair.
+  let pair = null;
+  outer:
+  for (let i = 0; i < hits.length; i++)
+    for (let j = i + 1; j < hits.length; j++)
+      if (!connected(hits[i], hits[j])){ pair = [hits[i], hits[j]]; break outer; }
+  if (!pair) return false;
+  const idx = flips.findIndex(f =>
+    (f.a === pair[0] && f.b === pair[1]) || (f.a === pair[1] && f.b === pair[0]));
+  if (idx >= 0) flips.splice(idx, 1);            // toggle this crossing off
+  else flips.push({a: pair[0], b: pair[1]});     // ...or on
+  dirty = true;
+  return true;
+}
+
+// ===========================================================================
+// Pointer input (rAF-batched)
+// ===========================================================================
+const pending = [];     // queued screen points awaiting the rAF processor
+let drawing = false, isTap = false, moved = 0, pendingStart = false;
+let lastPtr = null, downPos = null;
+let inputRAF = 0;
+
+// Decide, at the moment a real drag begins, whether to continue the existing
+// ribbon or start a fresh path. Continue only if the press landed near the last
+// tip; otherwise begin a new path at the pressed location. Deferring this until
+// actual movement means a tap (e.g. to flip a crossing) never moves the pen.
+function resolveStart(){
+  const hs = head ? project(head) : null;
+  const near = hs && Math.hypot(downPos.x - hs.x, downPos.y - hs.y) <= S * CONTINUE_UNITS;
+  if (!head || !near){
+    head = groundUnproject(downPos.x, downPos.y);
+    pathStart = {...head};
+  }
+}
+
+function processInput(){
+  inputRAF = 0;
+  while (pending.length){
+    const p = pending.shift();
+    if (!lastPtr){ lastPtr = p; continue; }
+    const ddx = p.x - lastPtr.x, ddy = p.y - lastPtr.y;
+    moved += Math.hypot(ddx, ddy);
+    if (moved > TAP_PX){
+      isTap = false;
+      if (pendingStart){ resolveStart(); pendingStart = false; }
+    }
+    if (!pendingStart){                       // only draw once a start is chosen
+      const step = state.elevation
+        ? {x:0, y:0, z: -ddy / S}             // drag up = climb
+        : screenDeltaToGround(ddx, ddy);
+      advanceHead(step);
+    }
+    lastPtr = p;
+  }
+}
+function queue(p){
+  pending.push(p);
+  if (!inputRAF) inputRAF = requestAnimationFrame(processInput);
+}
+
+cv.addEventListener("pointerdown", e => {
+  cv.setPointerCapture(e.pointerId);
+  drawing = true; isTap = true; moved = 0; pendingStart = true;
+  armed = false; magnetPlan = null;          // re-arm the magnet for this stroke
+  downPos = {x:e.clientX, y:e.clientY};
+  lastPtr = {x:e.clientX, y:e.clientY};
+  curBeam = null; pendingTurn = null;
+  hideHint();
+});
+cv.addEventListener("pointermove", e => {
+  if (!drawing) return;
+  if (e.getCoalescedEvents){
+    for (const ev of e.getCoalescedEvents()) queue({x:ev.clientX, y:ev.clientY});
+  } else {
+    queue({x:e.clientX, y:e.clientY});
+  }
+});
+function endStroke(){
+  if (!drawing) return;
+  drawing = false;
+  processInput();                  // flush any queued points
+  if (isTap && downPos){
+    tapAt(downPos.x, downPos.y);   // a tap (no drag) flips a crossing
+  } else if (magnetPlan){
+    commitClosure(magnetPlan);     // release inside the magnet -> snap shut
+  } else {
+    commitCurBeam();
+    closeIfNear();
+  }
+  pendingStart = false;
+  magnetPlan = null;
+}
+cv.addEventListener("pointerup", endStroke);
+cv.addEventListener("pointercancel", endStroke);
+
+// ===========================================================================
+// Controls
+// ===========================================================================
+const $ = id => document.getElementById(id);
+let hintGone = false;
+function hideHint(){ if (!hintGone){ hintGone = true; $("hint").style.opacity = 0; } }
+
+const widthWords  = ["thin","slim","mid","bold","chunky"];
+function word(v, words){ return words[clamp(Math.round(v * (words.length - 1)), 0, words.length - 1)]; }
+
+// Build palette swatches.
+const paletteEl = $("palette");
+PALETTE_ORDER.forEach(name => {
+  const p = PALETTES[name];
+  const b = document.createElement("button");
+  b.dataset.pal = name;
+  b.title = name;
+  b.style.background =
+    `linear-gradient(135deg, hsl(${p.top.h},${p.top.s}%,${p.top.l}%) 0 33%,` +
+    ` hsl(${p.mid.h},${p.mid.s}%,${p.mid.l}%) 33% 66%,` +
+    ` hsl(${p.dark.h},${p.dark.s}%,${p.dark.l}%) 66% 100%)`;
+  b.addEventListener("click", () => { state.palette = name; syncControls(); dirty = true; });
+  paletteEl.appendChild(b);
+});
+
+function syncControls(){
+  [...paletteEl.children].forEach(b =>
+    b.classList.toggle("active", b.dataset.pal === state.palette));
+  $("elev").checked = state.elevation;
+  $("elevSub").textContent = state.elevation ? "build up/down — z axis" : "ground — lay flat";
+  $("width").value = state.width;
+  $("widthVal").textContent = word(state.width, widthWords);
+  $("height").value = state.height;
+  $("heightVal").textContent = word(state.height, widthWords);
+  $("snap").value = state.snap;
+  $("snapVal").textContent = state.snap.toFixed(2);
+  $("drift").value = state.drift;
+  $("driftVal").textContent = state.drift.toFixed(2);
+  document.body.style.background = PALETTES[state.palette].bg;
+}
+
+$("elev").addEventListener("change", e => { state.elevation = e.target.checked; syncControls(); });
+$("width").addEventListener("input", e => { state.width = +e.target.value; syncControls(); });
+$("height").addEventListener("input", e => { state.height = +e.target.value; syncControls(); });
+$("snap").addEventListener("input", e => { state.snap = +e.target.value; syncControls(); });
+$("drift").addEventListener("input", e => { state.drift = +e.target.value; syncControls(); dirty = true; });
+
+function doClear(){
+  segments = []; joints = []; flips = []; curBeam = null;
+  head = null; pathStart = null; segCounter = 0;
+  armed = false; magnetPlan = null;
+  dirty = true;
+}
+function undo(){
+  // Remove the last beam plus the joint that led into it.
+  if (curBeam){ curBeam = null; }
+  else if (segments.length){
+    const removed = segments.pop();
+    flips = flips.filter(f => f.a !== removed && f.b !== removed);
+    if (joints.length) joints.pop();
+    const last = segments[segments.length - 1];
+    head = last ? {...last.b} : (pathStart ? {...pathStart} : null);
+    if (!segments.length){ head = null; pathStart = null; }
+  }
+  dirty = true;
+}
+$("clear").addEventListener("click", doClear);
+$("undo").addEventListener("click", undo);
+$("save").addEventListener("click", () => {
+  render();
+  cv.toBlob(blob => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "escher-" + Date.now() + ".png";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+});
+
+// Gear panel toggle.
+$("gear").addEventListener("click", () => $("panel").classList.toggle("hidden"));
+
+syncControls();
+
+// ===========================================================================
+// Test hook
+// ===========================================================================
+window.UI = {
+  set(o){
+    if (o.palette != null && PALETTES[o.palette]) state.palette = o.palette;
+    if (o.width  != null) state.width  = clamp(+o.width, 0, 1);
+    if (o.height != null) state.height = clamp(+o.height, 0, 1);
+    if (o.snap   != null) state.snap   = clamp(+o.snap, 0, 1);
+    if (o.drift  != null) state.drift  = clamp(+o.drift, 0, 1);
+    if (o.elevation != null) state.elevation = !!o.elevation;
+    syncControls();
+    dirty = true;
+    return this.get();
+  },
+  get(){ return JSON.parse(JSON.stringify(state)); },
+  clear(){ doClear(); },
+  count(){ return segments.length; },
+  joints(){ return joints.length; },
+  // Build a deterministic figure from world-axis steps (bypasses pointer input).
+  // steps: [{axis:'x'|'y'|'z', len:Number}, ...]  (len may be negative)
+  path(steps){
+    if (!head){ head = {x:0, y:0, z:0}; pathStart = {x:0, y:0, z:0}; }
+    let prevBeam = null;
+    for (const st of steps){
+      const u = AXES[st.axis] || AXES.x;
+      const dir = {x:Math.sign(st.len) * u.x, y:Math.sign(st.len) * u.y, z:Math.sign(st.len) * u.z};
+      const b = add(head, scale(u, st.len));
+      const beam = pushSegment({a:{...head}, b, dir, w:beamW(), h:beamH()});
+      if (prevBeam) addJoint({...head}, prevBeam, beam);   // corner cube at the shared vertex
+      head = b; prevBeam = beam;
+    }
+    closeIfNear();
+    dirty = true;
+    return segments.length;
+  },
+  // Lift the pen and reposition the head (no beam drawn). Lets tests build
+  // separate, deliberately-crossing strokes.
+  moveTo(p){
+    commitCurBeam();
+    head = {x:+p.x || 0, y:+p.y || 0, z:+p.z || 0};
+    if (!pathStart) pathStart = {...head};
+    return this.get();
+  },
+  tapAt(px, py){ const r = tapAt(px, py); return r; },
+  // Inspect draw order, depth, and screen-projected endpoints/midpoint.
+  segments(){
+    return segments.map((s, i) => {
+      const pa = project(s.a), pb = project(s.b), mid = project(scale(add(s.a, s.b), 0.5));
+      return {i, depth:segDepth(s),
+        sx:Math.round(mid.x), sy:Math.round(mid.y),
+        ax:Math.round(pa.x), ay:Math.round(pa.y),
+        bx:Math.round(pb.x), by:Math.round(pb.y)};
+    });
+  },
+  // Flipped crossings as [segIdxA, segIdxB] pairs (test/diagnostic hook).
+  flips(){ return flips.map(f => [f.a.segIdx, f.b.segIdx]); },
+  // Current ribbon tip (world + projected), or null if the canvas is empty.
+  head(){ if (!head) return null; const p = project(head); return {x:head.x, y:head.y, z:head.z, sx:Math.round(p.x), sy:Math.round(p.y)}; },
+  // Is a magnetic close currently previewing? (test/diagnostic hook)
+  closing(){ return magnetPlan != null; },
+  project(p){ return project(p); },
+};
+})();
+</script>
+</body>
+</html>
