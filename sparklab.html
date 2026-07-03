@@ -645,10 +645,14 @@ body.reduced .res-stars .star{transform:scale(1);animation:none}
     <div id="pg-machines" style="display:flex;flex-direction:column;gap:12px"></div>
     <p class="pg-note">Fact squares show how strong each practised fact is (share of correct answers,
       brighter&nbsp;=&nbsp;stronger; hover for detail). The game automatically asks wobbly facts more often.
-      Stars: ⭐ 60% · ⭐⭐ 80% · ⭐⭐⭐ 90% + quick recall. Levels unlock at ⭐⭐.</p>
+      Stars: ⭐ 60% · ⭐⭐ 80% · ⭐⭐⭐ 90% + quick recall. Levels unlock at ⭐⭐.
+      Use <b>Save / Load progress</b> to back the game up or move it to another browser or device.</p>
     <div class="heat-legend" id="heat-legend"></div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin:8px 0 24px">
+      <button class="btn ghost small" id="btn-export">💾 Save progress to file</button>
+      <button class="btn ghost small" id="btn-import">📂 Load progress from file</button>
       <button class="btn ghost small" id="btn-reset">🗑️ Reset all progress…</button>
+      <input type="file" id="import-file" accept=".json,application/json" class="hidden">
     </div>
   </div>
 </section>
@@ -2227,6 +2231,47 @@ $('btn-res-next').addEventListener('click', () => { sfx.whoosh(); startMission(M
 /* hall / progress */
 $('btn-hall-back').addEventListener('click', () => { sfx.click(); renderHome(); show('home'); });
 $('btn-pg-back').addEventListener('click', () => { sfx.click(); renderHome(); show('home'); });
+/* export / import progress (transfer between browsers/devices) */
+function exportJson(){
+  return JSON.stringify({ app: 'sparklab', exported: new Date().toISOString(), state: S }, null, 1);
+}
+function parseImport(raw){
+  const obj = typeof raw === 'string' ? JSON.parse(raw) : raw;
+  const st = obj && obj.app === 'sparklab' ? obj.state : obj;
+  if (!st || typeof st !== 'object' || typeof st.version !== 'number' ||
+      !st.profile || typeof st.profile !== 'object') throw new Error('not a SparkLab save');
+  return mergeInto(defaultState(), st);
+}
+function applyImport(st){
+  S = st;
+  save();
+  if (SCREEN === 'progress') renderProgress();
+  else if (SCREEN === 'home') renderHome();
+  toast(`⚡ Progress loaded — welcome back, ${S.profile.name || 'Inventor'}!`);
+}
+$('btn-export').addEventListener('click', () => {
+  sfx.click();
+  const slug = (S.profile.name || 'inventor').toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'inventor';
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([exportJson()], { type: 'application/json' }));
+  a.download = `sparklab-progress-${slug}-${todayStr()}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  toast('💾 Progress saved to a file');
+});
+$('btn-import').addEventListener('click', () => { sfx.click(); $('import-file').click(); });
+$('import-file').addEventListener('change', async e => {
+  const f = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if (!f) return;
+  let st;
+  try { st = parseImport(await f.text()); }
+  catch (err){ toast("That file isn't SparkLab progress — nothing changed."); return; }
+  askConfirm('Load this progress?',
+    `It replaces everything on this device with ${st.profile.name || 'Inventor'}'s saved game (${st.sparks || 0} sparks).`,
+    () => applyImport(st));
+});
+
 $('btn-reset').addEventListener('click', () => {
   askConfirm('Reset everything?', 'This deletes ALL progress, sparks and inventions.', () => {
     setTimeout(() => askConfirm('Really delete it all?', 'There is no undo. The lab starts again from scratch.', () => {
@@ -2298,6 +2343,8 @@ window.UI = {
       inventions: { ...S.inventions, built: S.inventions.built.slice() },
       daily: { ...S.daily }, totals: { ...S.totals }, factCount: Object.keys(S.facts).length };
   },
+  export(){ return exportJson(); },
+  import(raw){ applyImport(parseImport(raw)); return UI.state(); },
   grant({ sparks = 0, inventions = 0, pieces = 0, name, avatar } = {}){
     S.sparks += sparks;
     for (let i = 0; i < inventions && S.inventions.current < INVENTIONS.length; i++){

@@ -289,7 +289,9 @@ is explained with a picture (ten-frames, number lines, arrays…) then re-asked.
   (Web Audio) — toggle with 🔊. Both settings persist.
 - **Grown-ups' corner:** press-and-hold the ⚙️ gear on the home screen for the
   progress dashboard (per-level stars, per-fact strength heatmap, accuracy &
-  speed) and the double-confirmed full reset.
+  speed), **Save / Load progress** (exports the save as a JSON file and imports
+  it — for backups or moving the game to another browser or device), and the
+  double-confirmed full reset.
 - **Accessibility:** honours "reduce motion", big touch targets, fully
   keyboard-playable (digits/Enter, 1–4 for multiple choice).
 

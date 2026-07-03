@@ -119,6 +119,41 @@ with sync_playwright() as p:
     st = pg.evaluate("UI.state()")
     ok('mix lab completes 12 questions', st['screen'] == 'results' and st['totals']['answered'] >= 22)
 
+    # --- export / import: transfer progress to a "new browser" ---
+    import tempfile, os
+    pg.evaluate("UI.go('progress')")
+    with pg.expect_download() as dl:
+        pg.click('#btn-export')
+    ok('export button downloads a progress file',
+       dl.value.suggested_filename.startswith('sparklab-progress-') and
+       dl.value.suggested_filename.endswith('.json'))
+    exported = pg.evaluate("UI.export()")
+    sparks_before = pg.evaluate("UI.state().sparks")
+    tmp = tempfile.NamedTemporaryFile('w', suffix='.json', delete=False)
+    tmp.write(exported); tmp.close()
+    bad = tempfile.NamedTemporaryFile('w', suffix='.json', delete=False)
+    bad.write('{"totally":"not a save"}'); bad.close()
+
+    pg.evaluate("UI.reset()")                       # the "new browser"
+    ok('reset wipes progress before import', pg.evaluate("UI.state().sparks") == 0)
+    pg.evaluate("UI.go('progress')")
+    pg.set_input_files('#import-file', bad.name)
+    pg.wait_for_timeout(400)
+    ok('corrupt file rejected, no confirm shown',
+       not pg.is_visible('#ov-confirm') and pg.evaluate("UI.state().sparks") == 0)
+    pg.set_input_files('#import-file', tmp.name)
+    pg.wait_for_timeout(400)
+    ok('valid file asks for confirmation', pg.is_visible('#ov-confirm'))
+    pg.click('#confirm-yes')
+    st = pg.evaluate("UI.state()")
+    ok('import restores sparks + profile',
+       st['sparks'] == sparks_before and st['profile']['name'] == 'Testo')
+    pg.reload(wait_until='load')
+    pg.evaluate("new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))")
+    ok('imported progress persists after reload',
+       pg.evaluate("UI.state().sparks") == sparks_before)
+    os.unlink(tmp.name); os.unlink(bad.name)
+
     b.close()
 
 bad_console = [l for l in logs if l.startswith(('error', 'warning')) and 'AudioContext' not in l]

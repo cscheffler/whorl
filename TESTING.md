@@ -280,6 +280,8 @@ UI.answer(v);                // submit (returns true/false); works for MCQ + key
 UI.next();                   // skip the feedback delay (tests don't need to wait)
 UI.state();                  // screen, sparks, mission progress, machines, facts…
 UI.grant({sparks, inventions, pieces, name, avatar}); // fixtures for hall/dashboard shots
+UI.export();                 // progress-file JSON (what the Save button downloads)
+UI.import(jsonOrObject);     // load progress (what the Load button applies)
 ```
 
 A scripted mission is a synchronous loop — no waits needed:
@@ -303,8 +305,10 @@ To catch **feedback states** mid-flight, answer in `--setup` and use a short
 **Real-input suite.** `tools/sparklab_test.py` drives the game the way a child
 does — real clicks on doors/options/keypad, physical keyboard digits + Enter,
 the press-and-hold grown-ups gear (a quick tap must *not* open it), pause/quit
-spark banking, and a reload to prove `localStorage` persistence — 19 checks,
-must end `19/19` with no console errors:
+spark banking, a reload to prove `localStorage` persistence, and a progress
+export→reset→import round-trip through the real file picker (the export button
+must trigger a download; corrupt files must be rejected without touching
+state) — 25 checks, must end `25/25` with no console errors:
 
 ```sh
 venv/bin/python tools/sparklab_test.py
@@ -338,6 +342,6 @@ Gotchas found during bring-up:
 ## Files
 
 - `tools/shoot.py` — the harness.
-- `tools/sparklab_test.py` — SparkLab real-input interaction suite (19 checks).
+- `tools/sparklab_test.py` — SparkLab real-input interaction suite (25 checks).
 - `tools/shots/` — screenshot output (gitignored).
 - `tools/selftest.html` — temporary stand-in for validating the harness.

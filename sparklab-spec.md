@@ -176,8 +176,11 @@ keyboard playable; narration doubles as reading support.
    text; the one on the workbench shows collected pieces.
 7. **Grown-ups corner** (hold-to-open gear) — progress dashboard: per-machine
    star ladders, per-fact fluency heatmap (sequential single-hue ramp),
-   accuracy & speed stat tiles, total practice time; the (double-confirmed)
-   full reset lives here.
+   accuracy & speed stat tiles, total practice time. Also home to
+   **Save / Load progress** — exports the whole save as a JSON file and
+   imports it (validated, confirm-before-overwrite), so progress can be backed
+   up or moved to another browser/device — and the (double-confirmed) full
+   reset.
 
 ---
 
@@ -219,6 +222,8 @@ UI.question();               // {text, answer, options?, mode}
 UI.answer(15);               // submit programmatically (right or wrong)
 UI.state();                  // {screen, sparks, mission:{i,n,correct,streak}, …}
 UI.grant({sparks:500, inventions:3}); // fixture for hall/dashboard shots
+UI.export();                 // progress-file JSON (the Save button's payload)
+UI.import(jsonOrObject);     // apply a progress file (the Load button's action)
 ```
 
 Harness recipes (all must run with a clean console / no `pageerror`):
