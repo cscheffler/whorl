@@ -119,6 +119,48 @@ with sync_playwright() as p:
     st = pg.evaluate("UI.state()")
     ok('mix lab completes 12 questions', st['screen'] == 'results' and st['totals']['answered'] >= 22)
 
+    # --- mini-games: all 10 open, run their loop, and end cleanly ---
+    games = ['jetpack', 'radar', 'cat', 'jelly', 'skates', 'robodog', 'weather', 'shrink', 'piano', 'clock']
+    allok = True
+    for gname in games:
+        pg.evaluate(f"UI.play('{gname}')")
+        pg.click('#btn-arc-start')
+        pg.wait_for_timeout(450)
+        st = pg.evaluate("UI.arcade()")
+        if not (st['id'] == gname and st['running']):
+            allok = False
+            print('   game failed to run:', gname, st)
+        pg.evaluate("UI.endGame(7)")
+        if not pg.evaluate("UI.arcade().done"):
+            allok = False
+            print('   game failed to end:', gname)
+    ok('all 10 mini-games run and end cleanly', allok)
+    ok('mini-game best scores persisted', pg.evaluate("Object.keys(UI.state().arcade).length") >= 10)
+
+    # --- The Impossible Challenge: gating + boss fight ---
+    pg.evaluate("UI.reset(); UI.fx(false); UI.seed(6); UI.grant({name:'Testo'}); UI.go('hall')")
+    ok('impossible challenge locked at start',
+       pg.locator('.inv-card.impossible.locked').count() == 1 and
+       pg.locator('.inv-card.impossible .btn-play-inv').count() == 0)
+    pg.evaluate("UI.grant({inventions:10, allLevels:true}); UI.go('hall')")
+    ok('impossible unlocks after all inventions + all levels starred',
+       pg.locator('.inv-card.impossible.unlocked').count() == 1)
+    pg.click('.inv-card.impossible .btn-play-inv')
+    pg.click('#btn-arc-start')
+    pg.wait_for_timeout(300)
+    ok('impossible poses a question with a burning fuse',
+       len(pg.text_content('#imp-text') or '') > 0 and pg.locator('#imp-fusebar').count() == 1 and
+       pg.locator('#arcade-dom .mcq, #arcade-dom .pad-grid').count() >= 1)
+    ans = pg.evaluate("String(GAMES.impossible.q.answer)")
+    if pg.locator(f'#arcade-dom .opt[data-v="{ans}"]').count():
+        pg.click(f'#arcade-dom .opt[data-v="{ans}"]')
+    else:
+        pg.keyboard.type(ans)
+        pg.keyboard.press('Enter')
+    pg.wait_for_timeout(250)
+    ok('impossible: correct answer damages the boss', pg.evaluate("GAMES.impossible.hp") < 21)
+    pg.evaluate("UI.endGame(50)")
+
     # --- export / import: transfer progress to a "new browser" ---
     import tempfile, os
     pg.evaluate("UI.go('progress')")

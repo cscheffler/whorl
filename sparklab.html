@@ -714,6 +714,7 @@ const defaultState = () => ({
   machines: {},            // id -> {unlocked:1, stars:{lvl:best}, seenIntro:{lvl:true}}
   facts: {},               // key -> {n, ok, ewmaMs, last}
   inventions: { built: [], current: 0, pieces: 0 },
+  arcade: {},               // mini-game best scores, by game id
   daily: { last: '', streak: 0 },
   totals: { answered: 0, correct: 0, timeMs: 0, missions: 0 },
 });
@@ -797,6 +798,7 @@ const sfx = (() => {
       tone(1319, .5, { type:'triangle', vol:.4, when:.55 });
     },
     whoosh(){ tone(200, .3, { type:'sine', vol:.2, slide:500 }); },
+    note(freq, dur = .25, vol = .4){ tone(freq, dur, { type:'triangle', vol }); },
   };
 })();
 
@@ -2019,7 +2021,7 @@ function renderResults(stars, gained, builtNow, unlockedNew, titleBefore){
   const cur = builtNow || INVENTIONS[Math.min(inv.current, INVENTIONS.length - 1)];
   $('res-bp-icon').innerHTML = `<svg viewBox="0 0 100 100">${cur.art}</svg>`;
   $('res-bp-name').textContent = builtNow ? `${builtNow.name} — BUILT! 🎉` : bpDone ? 'All inventions built!' : `Building: ${cur.name}`;
-  $('res-bp-sub').textContent = builtNow ? 'It’s in your Hall of Inventions!' :
+  $('res-bp-sub').textContent = builtNow ? 'Mini-game unlocked — play it in the Hall of Inventions!' :
     bpDone ? 'You are a true Mad Genius.' :
     gained ? `+${gained} blueprint piece${gained > 1 ? 's' : ''}!` : 'Earn a star to win blueprint pieces!';
   $('res-bp-slots').innerHTML = builtNow || bpDone ? '' :
@@ -2341,22 +2343,1189 @@ window.UI = {
         firstTryOk: MI.firstTryOk, streak: MI.streak, sparks: MI.sparks, retries: MI.retries.length } : null,
       machines: JSON.parse(JSON.stringify(S.machines)),
       inventions: { ...S.inventions, built: S.inventions.built.slice() },
+      arcade: { ...S.arcade },
       daily: { ...S.daily }, totals: { ...S.totals }, factCount: Object.keys(S.facts).length };
   },
   export(){ return exportJson(); },
   import(raw){ applyImport(parseImport(raw)); return UI.state(); },
-  grant({ sparks = 0, inventions = 0, pieces = 0, name, avatar } = {}){
+  grant({ sparks = 0, inventions = 0, pieces = 0, name, avatar, allLevels = false } = {}){
     S.sparks += sparks;
     for (let i = 0; i < inventions && S.inventions.current < INVENTIONS.length; i++){
       S.inventions.built.push(S.inventions.current); S.inventions.current++;
     }
     S.inventions.pieces = pieces;
+    if (allLevels) MACHINES.forEach(m => {
+      const ms = mstate(m.id);
+      ms.unlocked = m.levels.length;
+      m.levels.forEach((_, i) => { ms.stars[i + 1] = Math.max(ms.stars[i + 1] || 0, 3); });
+    });
     if (name !== undefined){ S.profile.name = name; S.profile.done = true; }
     if (avatar !== undefined) S.profile.avatar = avatar;
     save();
     return UI.state();
   },
 };
+</script>
+<style>
+/* ============================================================
+   ARCADE — mini-games
+   ============================================================ */
+#scr-arcade .wrap{max-width:900px;gap:10px;flex:1}
+#arcade-stage{position:relative;flex:1;min-height:330px;border-radius:22px;overflow:hidden;
+  border:3px solid var(--line);box-shadow:var(--shadow);
+  background:radial-gradient(120% 100% at 50% 0%, #171d3f 0%, #0d1128 70%)}
+#arcade-cv{position:absolute;inset:0;width:100%;height:100%}
+#arcade-dom{position:absolute;inset:0;pointer-events:none}
+#arcade-info:empty{display:none}
+.arc-overlay{position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:12px;background:rgba(9,12,28,.86);backdrop-filter:blur(3px);
+  text-align:center;padding:20px;overflow-y:auto}
+.arc-overlay h2{font-size:1.6rem}
+.arc-overlay p{color:var(--ink-dim);max-width:46ch;font-weight:700;line-height:1.45}
+#arc-intro-art{width:104px;height:104px}
+#arc-intro-art svg{width:100%;height:100%}
+#arc-end-score{font-size:2.8rem;font-weight:900;color:var(--yellow)}
+/* Sock Hunt grid */
+.rad-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;width:min(66vmin,380px);margin:0 auto}
+.rad-cell{aspect-ratio:1;border-radius:10px;border:2px solid var(--line);background:var(--panel);
+  font-weight:900;font-size:1.05rem;color:var(--ink);display:flex;align-items:center;justify-content:center}
+.rad-cell.hot{background:#8a3d1e;border-color:#ff9760}
+.rad-cell.warm{background:#7a6420;border-color:#ffd23f}
+.rad-cell.cold{background:#1e3a6e;border-color:#5c8aec}
+.rad-cell.sock{background:#2c5e2e;border-color:#7ce43d;font-size:1.4rem}
+.rad-head{color:var(--ink-dim);font-weight:800;text-align:center;margin:10px 0}
+/* Cat Chat pads */
+.cat-wrap{display:flex;flex-direction:column;align-items:center;gap:12px;padding-top:8px}
+.cat-face{width:92px;height:92px;transition:transform .2s}
+.cat-face.talk{transform:scale(1.12) rotate(-4deg)}
+.cat-pads{display:grid;grid-template-columns:1fr 1fr;gap:12px;width:min(60vmin,320px)}
+.cat-pad{aspect-ratio:1.35;border-radius:18px;border:3px solid rgba(255,255,255,.25);opacity:.55;
+  transition:opacity .12s, transform .12s;box-shadow:0 5px 0 rgba(0,0,0,.35)}
+.cat-pad.lit{opacity:1;transform:scale(1.06);box-shadow:0 0 22px rgba(255,255,255,.35)}
+.cat-status{font-weight:900;color:var(--ink-dim);min-height:1.4em}
+/* Impossible Challenge */
+.imp-wrap{display:flex;flex-direction:column;height:100%;padding:10px 12px;gap:8px}
+.imp-boss{display:flex;align-items:center;gap:12px}
+.imp-boss svg{width:76px;height:76px;flex:none}
+.imp-boss.hit svg{animation:shake .35s}
+.imp-hp{flex:1;height:20px;border-radius:10px;border:2px solid var(--line2);background:#1a2048;overflow:hidden}
+.imp-hp>div{height:100%;background:linear-gradient(90deg,var(--coral),var(--orange));transition:width .3s}
+.imp-cores{font-size:1.25rem;letter-spacing:.1em;white-space:nowrap}
+.imp-q{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;text-align:center}
+.imp-machine{font-size:.85rem;font-weight:900;color:var(--ink-dim);text-transform:uppercase;letter-spacing:.05em}
+.imp-text{font-size:clamp(1.7rem,5vw,2.5rem);font-weight:900;font-variant-numeric:tabular-nums}
+.imp-text .blank{display:inline-block;min-width:1.4em;border-bottom:4px solid var(--cyan);color:var(--cyan)}
+.imp-feedback{min-height:1.4em;font-weight:900}
+.imp-fuse{height:12px;border-radius:6px;background:#1a2048;border:2px solid var(--line);overflow:hidden}
+.imp-fuse>div{height:100%;background:linear-gradient(90deg,var(--yellow),var(--coral));border-radius:4px}
+.imp-in .mcq{grid-template-columns:repeat(2,minmax(100px,190px));justify-content:center}
+.imp-in .mcq .opt{min-height:60px;font-size:1.5rem}
+.imp-in .pad-grid{grid-template-columns:repeat(6,minmax(48px,70px))}
+.imp-in .pad-grid .pk{min-height:48px;font-size:1.25rem}
+.imp-in #pad-display2{font-size:1.6rem;font-weight:900;min-width:110px;text-align:center;
+  background:var(--bg2);border:2px solid var(--line);border-radius:12px;color:var(--cyan);
+  font-variant-numeric:tabular-nums;padding:.1em .4em;margin:0 auto 8px}
+.imp-in #pad-display2:empty::before{content:'_';opacity:.3}
+/* hall additions */
+.inv-card .btn-play-inv{width:100%;min-height:48px}
+.inv-card .inv-best{font-size:.82rem;font-weight:800;color:var(--yellow)}
+.inv-card.impossible{border-color:var(--violet);grid-column:1/-1;flex-direction:row;text-align:left;gap:16px}
+.inv-card.impossible .inv-art{width:90px;height:90px;flex:none}
+.inv-card.impossible.unlocked{box-shadow:0 0 0 3px rgba(157,134,255,.3),0 0 34px rgba(157,134,255,.25),var(--shadow);
+  animation:imppulse 2.4s ease-in-out infinite}
+@keyframes imppulse{50%{box-shadow:0 0 0 3px rgba(157,134,255,.5),0 0 50px rgba(157,134,255,.4),var(--shadow)}}
+.no-fx .inv-card.impossible.unlocked{animation:none}
+@media (max-width:640px){
+  .imp-in .pad-grid{grid-template-columns:repeat(6,1fr);width:100%}
+  .inv-card.impossible{flex-direction:column;text-align:center}
+}
+</style>
+
+<!-- ============ ARCADE screen ============ -->
+<section class="screen" id="scr-arcade">
+  <div class="wrap">
+    <div class="m-top">
+      <button class="btn ghost iconbtn" id="btn-arc-back" title="Back to the Hall">◀</button>
+      <div id="arcade-title" style="flex:1;font-weight:900;font-size:1.15rem">Mini-game</div>
+      <span class="chip" id="arcade-info"></span>
+      <span class="chip spark">🏅 <span id="arcade-score">0</span></span>
+    </div>
+    <div id="arcade-stage">
+      <canvas id="arcade-cv"></canvas>
+      <div id="arcade-dom"></div>
+      <div class="arc-overlay" id="arc-intro">
+        <div id="arc-intro-art"></div>
+        <h2 id="arc-intro-name"></h2>
+        <p id="arc-intro-how"></p>
+        <div class="chip" id="arc-intro-best"></div>
+        <button class="btn primary big" id="btn-arc-start">▶ Play!</button>
+      </div>
+      <div class="arc-overlay hidden" id="arc-end">
+        <h2 id="arc-end-title"></h2>
+        <div id="arc-end-score"></div>
+        <div class="chip" id="arc-end-best"></div>
+        <p id="arc-end-note"></p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
+          <button class="btn ghost" id="btn-arc-hall">🏆 Hall</button>
+          <button class="btn primary" id="btn-arc-again">↻ Play again</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+"use strict";
+/* ============================================================
+   ARCADE framework — one screen, many mini-games
+   ============================================================ */
+const CFONT = 'ui-rounded,"Arial Rounded MT Bold","Trebuchet MS",sans-serif';
+const GAMES = {};
+const invArt = i => `<svg viewBox="0 0 100 100">${INVENTIONS[i].art}</svg>`;
+
+const Arcade = (() => {
+  const stage = $('arcade-stage'), cv = $('arcade-cv'), c2 = cv.getContext('2d'), dom = $('arcade-dom');
+  let g = null, gid = null, running = false, done = false, raf = 0, score = 0, t0 = 0, last = 0, timers = [];
+  let W = 0, H = 0;
+  function resize(){
+    const r = stage.getBoundingClientRect(), d = Math.min(devicePixelRatio || 1, 2);
+    W = Math.max(200, Math.round(r.width)); H = Math.max(160, Math.round(r.height));
+    cv.width = W * d; cv.height = H * d; c2.setTransform(d, 0, 0, d, 0, 0);
+  }
+  function clearTimers(){ timers.forEach(clearTimeout); timers = []; }
+  const env = {
+    get W(){ return W; }, get H(){ return H; }, cx: c2, dom,
+    get t(){ return (performance.now() - t0) / 1000; },
+    get score(){ return score; },
+    add(n){ score = Math.max(0, score + n); $('arcade-score').textContent = score; },
+    info(s){ $('arcade-info').innerHTML = s; },
+    timeout(fn, ms){ const id = setTimeout(fn, ms); timers.push(id); return id; },
+    over(note){ end(note); },
+  };
+  function open(id){
+    gid = id; g = GAMES[id];
+    running = false; done = false; score = 0;
+    show('arcade');
+    $('arcade-title').textContent = g.title;
+    $('arcade-score').textContent = '0'; env.info('');
+    $('arc-intro-name').textContent = g.title;
+    $('arc-intro-how').textContent = g.how;
+    $('arc-intro-art').innerHTML = g.art;
+    const best = S.arcade[gid] || 0;
+    $('arc-intro-best').textContent = best ? `🏅 Best so far: ${best}` : '✨ First go — good luck!';
+    $('arc-intro').classList.remove('hidden');
+    $('arc-end').classList.add('hidden');
+    dom.innerHTML = ''; dom.style.pointerEvents = 'none';
+    resize(); c2.clearRect(0, 0, W, H);
+    say(`${g.title}! ${g.how}`);
+  }
+  function begin(){
+    speech.stop();
+    $('arc-intro').classList.add('hidden'); $('arc-end').classList.add('hidden');
+    dom.innerHTML = ''; dom.style.pointerEvents = 'none';
+    score = 0; $('arcade-score').textContent = '0';
+    clearTimers(); resize(); c2.clearRect(0, 0, W, H);
+    done = false; running = true; t0 = performance.now(); last = t0;
+    g.start(env);
+    cancelAnimationFrame(raf); raf = requestAnimationFrame(loop);
+  }
+  function loop(ts){
+    if (!running) return;
+    const dt = Math.min((ts - last) / 1000, .05); last = ts;
+    if (g.tick) g.tick(dt, env);
+    if (running) raf = requestAnimationFrame(loop);
+  }
+  function end(note = ''){
+    if (done) return;
+    done = true; running = false;
+    cancelAnimationFrame(raf); clearTimers();
+    const best = S.arcade[gid] || 0, nb = score > best;
+    if (nb){ S.arcade[gid] = score; save(); }
+    $('arc-end-title').textContent = nb ? '🏅 NEW BEST!' : score > 0 ? 'Nice inventing!' : 'Good try!';
+    $('arc-end-score').textContent = score;
+    $('arc-end-best').textContent = `🏅 Best: ${Math.max(score, best)}`;
+    $('arc-end-note').textContent = note;
+    $('arc-end').classList.remove('hidden');
+    if (nb){ sfx.fanfare(); confetti(); } else sfx.pop();
+  }
+  function abort(){ running = false; done = true; cancelAnimationFrame(raf); clearTimers(); speech.stop(); }
+  function pt(e){ const r = stage.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; }
+  stage.addEventListener('pointerdown', e => { if (running && g.down){ const [x, y] = pt(e); g.down(x, y, env); } });
+  stage.addEventListener('pointermove', e => { if (running && g.move){ const [x, y] = pt(e); g.move(x, y, env); } });
+  ['pointerup', 'pointercancel'].forEach(ev =>
+    stage.addEventListener(ev, e => { if (running && g.up){ const [x, y] = pt(e); g.up(x, y, env); } }));
+  document.addEventListener('keydown', e => {
+    if (SCREEN !== 'arcade' || !running || !g.key) return;
+    if ([' ', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) e.preventDefault();
+    g.key(e.key, true, env);
+  });
+  document.addEventListener('keyup', e => { if (SCREEN === 'arcade' && running && g.key) g.key(e.key, false, env); });
+  $('btn-arc-start').addEventListener('click', () => { sfx.whoosh(); begin(); });
+  $('btn-arc-again').addEventListener('click', () => { sfx.whoosh(); begin(); });
+  $('btn-arc-hall').addEventListener('click', () => { sfx.click(); abort(); renderHall(); show('hall'); });
+  $('btn-arc-back').addEventListener('click', () => { sfx.click(); abort(); renderHall(); show('hall'); });
+  window.addEventListener('resize', () => { if (SCREEN === 'arcade') resize(); });
+  return { open, begin, abort,
+    state(){ return { id: gid, running, done, score }; },
+    forceEnd(n){ if (typeof n === 'number'){ score = n; $('arcade-score').textContent = n; } end(); } };
+})();
+SCREEN_IDS.arcade = 'scr-arcade';
+{ const _origShow = show;
+  show = name => { if (SCREEN === 'arcade' && name !== 'arcade') Arcade.abort(); _origShow(name); }; }
+
+/* canvas helpers */
+function drawBot(c, x, y, r, col, edge){
+  c.fillStyle = col; c.strokeStyle = edge; c.lineWidth = 2.5;
+  c.beginPath(); c.roundRect(x - r, y - r * .85, r * 2, r * 1.7, r * .5); c.fill(); c.stroke();
+  c.fillStyle = '#fff';
+  c.beginPath(); c.arc(x - r * .38, y - r * .15, r * .3, 0, 7); c.arc(x + r * .38, y - r * .15, r * .3, 0, 7); c.fill();
+  c.fillStyle = '#12162e';
+  c.beginPath(); c.arc(x - r * .34, y - r * .12, r * .15, 0, 7); c.arc(x + r * .42, y - r * .12, r * .15, 0, 7); c.fill();
+  c.strokeStyle = edge; c.beginPath(); c.moveTo(x, y - r * .85); c.lineTo(x, y - r * 1.25); c.stroke();
+  c.fillStyle = '#ffd23f'; c.beginPath(); c.arc(x, y - r * 1.35, r * .18, 0, 7); c.fill();
+}
+function drawGearC(c, x, y, r, col){
+  c.fillStyle = col;
+  for (let i = 0; i < 8; i++){
+    const a = i / 8 * Math.PI * 2;
+    c.beginPath(); c.arc(x + Math.cos(a) * r, y + Math.sin(a) * r, r * .22, 0, 7); c.fill();
+  }
+  c.beginPath(); c.arc(x, y, r, 0, 7); c.fill();
+  c.fillStyle = '#0d1128'; c.beginPath(); c.arc(x, y, r * .35, 0, 7); c.fill();
+}
+
+/* ============================================================
+   1. BUBBLE FLIGHT — Bubble-Powered Jetpack
+   ============================================================ */
+GAMES.jetpack = {
+  title: 'Bubble Flight',
+  how: 'Hold anywhere (or hold SPACE) to blow bubbles and fly! Dodge the gear towers and pop number bubbles for extra points.',
+  get art(){ return invArt(0); },
+  start(e){ this.y = e.H / 2; this.vy = 0; this.th = false; this.obs = []; this.bub = []; this.ot = 1; this.bt = .5; this.dist = 0; },
+  down(){ this.th = true; }, up(){ this.th = false; },
+  key(k, d){ if (k === ' ' || k === 'ArrowUp') this.th = d; },
+  tick(dt, e){
+    const spd = 210 + e.t * 8, px = 110, pr = 16;
+    this.vy += (this.th ? -1450 : 900) * dt;
+    this.vy = clamp(this.vy, -430, 520);
+    this.y += this.vy * dt;
+    if (this.y < 22){ this.y = 22; this.vy = 0; }
+    if (this.y > e.H - 14) return e.over('Splash-down! The jetpack fizzled out.');
+    this.ot -= dt;
+    if (this.ot <= 0){
+      this.ot = 1.75;
+      const gap = Math.max(128, 185 - e.t * 2.2);
+      this.obs.push({ x: e.W + 50, gy: 55 + rng() * (e.H - 115 - gap), gap });
+    }
+    this.bt -= dt;
+    if (this.bt <= 0){
+      this.bt = .85;
+      const v = pick([1, 1, 1, 2, 2, 5, 10]);
+      this.bub.push({ x: e.W + 20, y: 45 + rng() * (e.H - 90), v, r: 13 + v });
+    }
+    this.obs.forEach(o => o.x -= spd * dt);
+    this.bub.forEach(b => b.x -= spd * dt * .9);
+    this.obs = this.obs.filter(o => o.x > -70);
+    this.bub = this.bub.filter(b => b.x > -30 && !b.hit);
+    this.dist += spd * dt;
+    if (this.dist > 60){ this.dist -= 60; e.add(1); }
+    for (const o of this.obs)
+      if (Math.abs(o.x - px) < 24 + pr && (this.y - pr * .6 < o.gy || this.y + pr * .6 > o.gy + o.gap))
+        return e.over('CLANG! Straight into a gear tower.');
+    for (const b of this.bub)
+      if (!b.hit && (b.x - px) ** 2 + (b.y - this.y) ** 2 < (b.r + pr) ** 2){ b.hit = true; e.add(b.v); sfx.pop(); }
+    /* draw */
+    const c = e.cx; c.clearRect(0, 0, e.W, e.H);
+    for (const o of this.obs){
+      c.fillStyle = '#2c3364';
+      c.fillRect(o.x - 16, 0, 32, o.gy - 18); c.fillRect(o.x - 16, o.gy + o.gap + 18, 32, e.H);
+      drawGearC(c, o.x, o.gy - 18, 24, '#39415f');
+      drawGearC(c, o.x, o.gy + o.gap + 18, 24, '#39415f');
+    }
+    for (const b of this.bub){
+      c.strokeStyle = 'rgba(63,224,255,.9)'; c.lineWidth = 2.5;
+      c.beginPath(); c.arc(b.x, b.y, b.r, 0, 7); c.stroke();
+      c.fillStyle = 'rgba(63,224,255,.12)'; c.fill();
+      c.fillStyle = '#bff1ff'; c.font = `900 ${b.r}px ${CFONT}`;
+      c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(b.v, b.x, b.y + 1);
+    }
+    if (this.th && FX){
+      for (let i = 0; i < 3; i++){
+        c.strokeStyle = 'rgba(63,224,255,.5)';
+        c.beginPath(); c.arc(px - 20 - rng() * 26, this.y + 12 + rng() * 12, 3 + rng() * 5, 0, 7); c.stroke();
+      }
+    }
+    c.fillStyle = '#ffd23f';
+    c.beginPath(); c.roundRect(px - 24, this.y - 8, 12, 20, 5); c.fill();
+    drawBot(c, px, this.y, pr, '#3fe0ff', '#0b7d97');
+  },
+};
+
+/* ============================================================
+   2. SOCK HUNT — Sock-Finding Radar
+   ============================================================ */
+GAMES.radar = {
+  title: 'Sock Hunt',
+  how: 'A sock is hiding in the wardrobe! Tap a drawer and the radar shows how many steps away the sock is. Find all 5 socks before the battery runs out!',
+  get art(){ return invArt(1); },
+  start(e){
+    this.found = 0; this.round = 0;
+    e.dom.style.pointerEvents = 'auto';
+    e.dom.onclick = ev => {
+      const b = ev.target.closest('.rad-cell');
+      if (b && !this.lock && !b.dataset.done) this.ping(+b.dataset.x, +b.dataset.y, b, e);
+    };
+    this.newRound(e);
+  },
+  newRound(e){
+    this.round++;
+    if (this.round > 5){ e.dom.onclick = null; return e.over(`You rescued ${this.found} of 5 lost socks!`); }
+    this.sx = ri(0, 5); this.sy = ri(0, 5); this.pings = 9; this.lock = false;
+    let cells = '';
+    for (let y = 0; y < 6; y++) for (let x = 0; x < 6; x++)
+      cells += `<button class="rad-cell" data-x="${x}" data-y="${y}"></button>`;
+    e.dom.innerHTML = `<div class="rad-head" id="rad-head">Sock ${this.round} of 5 — where is it?</div>
+      <div class="rad-grid">${cells}</div>`;
+    e.info(`🧦 ${this.found}/5 &nbsp; 🔋 ${this.pings}`);
+  },
+  ping(x, y, b, e){
+    const d = Math.abs(x - this.sx) + Math.abs(y - this.sy);
+    b.dataset.done = 1;
+    if (d === 0){
+      this.lock = true; this.found++;
+      b.classList.add('sock'); b.textContent = '🧦';
+      const pts = 20 + this.pings * 10;
+      e.add(pts); sfx.correct(this.found);
+      $('rad-head').textContent = `Found it! +${pts}`;
+      e.timeout(() => this.newRound(e), 950);
+      return;
+    }
+    this.pings--;
+    b.textContent = d;
+    b.classList.add(d <= 2 ? 'hot' : d <= 4 ? 'warm' : 'cold');
+    sfx.note && sfx.note(240 + Math.max(0, 10 - d) * 70, .1);
+    e.info(`🧦 ${this.found}/5 &nbsp; 🔋 ${this.pings}`);
+    $('rad-head').textContent = d <= 2 ? 'Beep-beep-BEEP! So close!' : d <= 4 ? 'Beep… getting warmer.' : 'bip… ice cold.';
+    if (this.pings <= 0){
+      this.lock = true; sfx.wrong();
+      const sockBtn = e.dom.querySelector(`[data-x="${this.sx}"][data-y="${this.sy}"]`);
+      if (sockBtn){ sockBtn.classList.add('sock'); sockBtn.textContent = '🧦'; }
+      $('rad-head').textContent = 'Battery flat! There it was…';
+      e.timeout(() => this.newRound(e), 1200);
+    }
+  },
+  tick(){},
+};
+
+/* ============================================================
+   3. CAT CHAT — Cat Translator 3000
+   ============================================================ */
+GAMES.cat = {
+  title: 'Cat Chat',
+  how: 'The cat miaows a secret tune — listen, then tap the pads back in the same order! Every round adds one more miaow.',
+  get art(){ return invArt(2); },
+  tones: [262, 330, 392, 523],
+  colors: ['#ffd23f', '#3fe0ff', '#ff5d73', '#b3ef3d'],
+  start(e){
+    this.seq = []; this.pos = 0; this.lock = true;
+    e.dom.style.pointerEvents = 'auto';
+    e.dom.innerHTML = `<div class="cat-wrap">
+      <div class="cat-face" id="cat-face"><svg viewBox="0 0 100 100">${INVENTIONS[2].art}</svg></div>
+      <div class="cat-status" id="cat-status">Listen…</div>
+      <div class="cat-pads">${[0, 1, 2, 3].map(i =>
+        `<button class="cat-pad" data-i="${i}" style="background:${this.colors[i]}"></button>`).join('')}</div></div>`;
+    e.dom.onclick = ev => { const b = ev.target.closest('.cat-pad'); if (b && !this.lock) this.tap(+b.dataset.i, e); };
+    this.next(e);
+  },
+  flash(i, e, talk){
+    const pad = e.dom.querySelectorAll('.cat-pad')[i];
+    if (!pad) return;
+    pad.classList.add('lit');
+    if (talk) $('cat-face').classList.add('talk');
+    sfx.note(this.tones[i], .28);
+    e.timeout(() => { pad.classList.remove('lit'); $('cat-face').classList.remove('talk'); }, 240);
+  },
+  next(e){
+    this.seq.push(ri(0, 3)); this.pos = 0; this.lock = true;
+    e.info(`Round ${this.seq.length}`);
+    $('cat-status').textContent = 'Listen…';
+    const step = Math.max(240, 470 - this.seq.length * 18);
+    this.seq.forEach((p, i) => e.timeout(() => this.flash(p, e, true), 550 + i * step));
+    e.timeout(() => { this.lock = false; $('cat-status').textContent = 'Your turn!'; }, 550 + this.seq.length * step);
+  },
+  tap(i, e){
+    this.flash(i, e, false);
+    if (i === this.seq[this.pos]){
+      this.pos++;
+      if (this.pos === this.seq.length){
+        this.lock = true;
+        e.add(this.seq.length * 10);
+        $('cat-status').textContent = pick(['Purrrfect!', 'Miaow-vellous!', 'The cat approves!']);
+        e.timeout(() => this.next(e), 750);
+      }
+    } else {
+      this.lock = true;
+      sfx.wrong(); sfx.note(196, .4); e.timeout(() => sfx.note(147, .5), 150);
+      $('cat-status').textContent = 'MRROWW?! Wrong miaow!';
+      e.timeout(() => e.over(`You kept up for ${this.seq.length - 1} round${this.seq.length === 2 ? '' : 's'} of cat chat!`), 900);
+    }
+  },
+  key(k, d, e){ if (d && '1234'.includes(k) && !this.lock) this.tap(+k - 1, e); },
+  tick(){},
+};
+
+/* ============================================================
+   4. JELLY BOUNCE — Jelly Trampoline
+   ============================================================ */
+GAMES.jelly = {
+  title: 'Jelly Bounce',
+  how: 'Slide the jelly to keep Robo bouncing — the wobbly middle is EXTRA springy! Grab stars on the way up. Three misses and the jelly needs a rest.',
+  get art(){ return invArt(3); },
+  start(e){
+    this.px = e.W / 2; this.dir = 0; this.lives = 3; this.bounces = 0;
+    this.ball = { x: e.W / 2, y: 60, vx: 70, vy: 0 };
+    this.stars = []; this.st = 1; this.wob = 0;
+    e.info('❤️❤️❤️');
+  },
+  move(x){ this.px = x; },
+  key(k, d){ this.dir = d ? (k === 'ArrowLeft' ? -1 : k === 'ArrowRight' ? 1 : this.dir) : 0; },
+  tick(dt, e){
+    const b = this.ball, py = e.H - 36, pw = 66;
+    this.px = clamp(this.px + this.dir * 520 * dt, 60, e.W - 60);
+    b.vy += 880 * dt; b.x += b.vx * dt; b.y += b.vy * dt;
+    if (b.x < 18 || b.x > e.W - 18){ b.vx *= -1; b.x = clamp(b.x, 18, e.W - 18); }
+    this.wob = Math.max(0, this.wob - dt * 3);
+    if (b.vy > 0 && b.y > py - 16 && b.y < py + 20 && Math.abs(b.x - this.px) < pw){
+      const sweet = Math.abs(b.x - this.px) < 20;
+      b.vy = -(440 + Math.min(this.bounces, 22) * 13) * (sweet ? 1.15 : 1);
+      b.vx += (b.x - this.px) * 3.2;
+      b.vx = clamp(b.vx, -320, 320);
+      this.bounces++; this.wob = 1;
+      e.add(sweet ? 7 : 2);
+      if (sweet) sfx.zap(); else sfx.pop();
+    }
+    if (b.y > e.H + 30){
+      this.lives--;
+      e.info('❤️'.repeat(this.lives) + '🖤'.repeat(3 - this.lives));
+      sfx.wrong();
+      if (this.lives <= 0) return e.over(`${this.bounces} boings! The jelly needs a lie-down.`);
+      Object.assign(b, { x: e.W / 2, y: 40, vx: pick([-90, 90]), vy: 0 });
+    }
+    this.st -= dt;
+    if (this.st <= 0){ this.st = 1.5; this.stars.push({ x: 40 + rng() * (e.W - 80), y: 50 + rng() * e.H * .45, p: rng() * 7 }); }
+    this.stars = this.stars.filter(s => {
+      if ((s.x - b.x) ** 2 + (s.y - b.y) ** 2 < 30 ** 2){ e.add(10); sfx.note(880, .12); return false; }
+      return true;
+    });
+    if (this.stars.length > 6) this.stars.shift();
+    /* draw */
+    const c = e.cx; c.clearRect(0, 0, e.W, e.H);
+    c.fillStyle = '#ffd23f'; c.font = `900 22px ${CFONT}`; c.textAlign = 'center'; c.textBaseline = 'middle';
+    for (const s of this.stars) c.fillText('★', s.x, s.y + Math.sin(performance.now() / 300 + s.p) * 4);
+    const squash = 1 + this.wob * .35;
+    c.fillStyle = '#ff5d73'; c.strokeStyle = '#a12138'; c.lineWidth = 3;
+    c.beginPath();
+    c.moveTo(this.px - pw, py + 14);
+    c.quadraticCurveTo(this.px, py + 14 - 26 / squash, this.px + pw, py + 14);
+    c.quadraticCurveTo(this.px, py + 26, this.px - pw, py + 14);
+    c.fill(); c.stroke();
+    c.strokeStyle = '#5a6398'; c.lineWidth = 4;
+    c.beginPath(); c.moveTo(this.px - pw + 8, py + 16); c.lineTo(this.px - pw - 4, e.H);
+    c.moveTo(this.px + pw - 8, py + 16); c.lineTo(this.px + pw + 4, e.H); c.stroke();
+    c.fillStyle = 'rgba(255,255,255,.25)';
+    c.beginPath(); c.arc(this.px, py + 4, 20, 0, 7); c.fill();
+    drawBot(c, b.x, b.y, 15, '#b3ef3d', '#5d8409');
+  },
+};
+
+/* ============================================================
+   5. SKATE DASH — Rocket Skates
+   ============================================================ */
+GAMES.skates = {
+  title: 'Skate Dash',
+  how: 'Whoosh down the corridor on rocket skates! Tap (or ⬆⬇) to hop between lanes and dodge the crates. Boost gates: zoom through the BIGGER number!',
+  get art(){ return invArt(4); },
+  start(e){
+    this.lane = 0; this.ly = 0; this.obs = []; this.gates = [];
+    this.ot = 1.4; this.gt = 4.5; this.dist = 0; this.boost = 0; this.scroll = 0;
+  },
+  down(){ this.lane = 1 - this.lane; sfx.click(); },
+  key(k, d){ if (d && k === 'ArrowUp') this.lane = 0; if (d && k === 'ArrowDown') this.lane = 1; },
+  laneY(e, l){ return e.H * (l ? .72 : .38); },
+  tick(dt, e){
+    const spd = (270 + e.t * 11) * (this.boost > 0 ? 1.4 : 1), px = 120;
+    this.boost -= dt; this.scroll = (this.scroll + spd * dt) % 60;
+    this.ly += (this.laneY(e, this.lane) - this.ly) * Math.min(1, dt * 14);
+    this.ot -= dt;
+    if (this.ot <= 0){ this.ot = Math.max(.72, 1.5 - e.t * .014); this.obs.push({ x: e.W + 40, l: ri(0, 1) }); }
+    this.gt -= dt;
+    if (this.gt <= 0){
+      this.gt = 7;
+      let a = ri(11, 99), b; do { b = ri(11, 99); } while (b === a);
+      this.gates.push({ x: e.W + 60, vals: [a, b], taken: false });
+    }
+    this.obs.forEach(o => o.x -= spd * dt);
+    this.gates.forEach(gg => gg.x -= spd * dt);
+    this.obs = this.obs.filter(o => o.x > -50);
+    this.gates = this.gates.filter(gg => gg.x > -80);
+    this.dist += spd * dt;
+    if (this.dist > 70){ this.dist -= 70; e.add(1); }
+    for (const o of this.obs)
+      if (o.l === this.lane && Math.abs(o.x - px) < 34 && Math.abs(this.laneY(e, o.l) - this.ly) < 26)
+        return e.over('CRASH! Crates: 1, skates: 0.');
+    for (const gg of this.gates)
+      if (!gg.taken && gg.x < px){
+        gg.taken = true;
+        if (gg.vals[this.lane] === Math.max(...gg.vals)){ e.add(30); this.boost = 1.3; sfx.zap(); }
+        else sfx.click();
+      }
+    /* draw */
+    const c = e.cx; c.clearRect(0, 0, e.W, e.H);
+    c.strokeStyle = '#2c3364'; c.lineWidth = 3; c.setLineDash([26, 34]); c.lineDashOffset = this.scroll;
+    for (const l of [0, 1]){
+      c.beginPath(); c.moveTo(0, this.laneY(e, l) + 30); c.lineTo(e.W, this.laneY(e, l) + 30); c.stroke();
+    }
+    c.setLineDash([]);
+    for (const gg of this.gates){
+      const big = Math.max(...gg.vals);
+      for (const l of [0, 1]){
+        const y = this.laneY(e, l);
+        c.fillStyle = gg.vals[l] === big ? 'rgba(255,210,63,.16)' : 'rgba(157,134,255,.10)';
+        c.fillRect(gg.x - 26, y - 34, 52, 66);
+        c.strokeStyle = gg.vals[l] === big ? '#ffd23f' : '#5a6398'; c.lineWidth = 3;
+        c.strokeRect(gg.x - 26, y - 34, 52, 66);
+        c.fillStyle = gg.vals[l] === big ? '#ffd23f' : '#aab3de';
+        c.font = `900 21px ${CFONT}`; c.textAlign = 'center'; c.textBaseline = 'middle';
+        c.fillText(gg.vals[l], gg.x, y);
+      }
+    }
+    for (const o of this.obs){
+      const y = this.laneY(e, o.l);
+      c.fillStyle = '#8a5a2e'; c.strokeStyle = '#5c3a1a'; c.lineWidth = 3;
+      c.beginPath(); c.roundRect(o.x - 20, y - 20, 40, 44, 6); c.fill(); c.stroke();
+      c.strokeStyle = 'rgba(0,0,0,.3)';
+      c.beginPath(); c.moveTo(o.x - 20, y - 20); c.lineTo(o.x + 20, y + 24);
+      c.moveTo(o.x + 20, y - 20); c.lineTo(o.x - 20, y + 24); c.stroke();
+    }
+    if (this.boost > 0 || this.dist){
+      c.strokeStyle = this.boost > 0 ? '#ffd23f' : 'rgba(255,160,46,.65)'; c.lineWidth = 4;
+      for (let i = 0; i < (this.boost > 0 ? 4 : 2); i++){
+        c.beginPath(); c.moveTo(px - 22 - i * 13, this.ly + 20); c.lineTo(px - 34 - i * 13, this.ly + 20); c.stroke();
+      }
+    }
+    c.fillStyle = '#3fe0ff';
+    c.beginPath(); c.roundRect(px - 16, this.ly + 16, 34, 8, 4); c.fill();
+    drawBot(c, px, this.ly - 2, 17, '#9d86ff', '#4c37a8');
+  },
+};
+</script>
+<script>
+"use strict";
+/* ============================================================
+   6. FETCH! — Robo-Dog MK-1
+   ============================================================ */
+GAMES.robodog = {
+  title: 'Fetch!',
+  how: 'Drag back from the bone like a catapult, let go to throw! Land it near the number on the flag and Robo-Dog will fetch it. 8 throws!',
+  get art(){ return invArt(5); },
+  start(e){
+    this.throwsLeft = 8; this.phase = 'aim'; this.drag = null; this.msg = '';
+    this.gy = e.H - 56; this.x0 = 60; this.scale = (e.W - 120) / 50;
+    this.bone = { x: this.x0, y: this.gy - 12, vx: 0, vy: 0 };
+    this.dogX = this.x0 - 26; this.newTarget(e);
+  },
+  newTarget(e){ this.target = ri(8, 48); e.info(`🦴 ${this.throwsLeft} throws left`); },
+  down(x, y){ if (this.phase === 'aim') this.drag = { x0: x, y0: y, x, y }; },
+  move(x, y){ if (this.drag){ this.drag.x = x; this.drag.y = y; } },
+  up(){
+    if (!this.drag || this.phase !== 'aim') return void (this.drag = null);
+    const dx = this.drag.x0 - this.drag.x, dy = this.drag.y0 - this.drag.y;
+    this.drag = null;
+    if (dx < 12 && Math.abs(dy) < 12) return;
+    this.bone.vx = clamp(dx * 3.4, 90, 640);
+    this.bone.vy = clamp(dy * 3.4 - 120, -720, -60);
+    this.phase = 'fly'; this.bounced = false; sfx.whoosh();
+  },
+  tick(dt, e){
+    const b = this.bone, c = e.cx;
+    if (this.phase === 'fly'){
+      b.vy += 760 * dt; b.x += b.vx * dt; b.y += b.vy * dt;
+      if (b.x > e.W - 12){ b.x = e.W - 12; b.vx *= -.4; }
+      if (b.y >= this.gy - 6 && b.vy > 0){
+        b.y = this.gy - 6;
+        if (!this.bounced && Math.abs(b.vy) > 130){ this.bounced = true; b.vy *= -.32; b.vx *= .55; sfx.pop(); }
+        else {
+          this.phase = 'fetch'; this.fetchT = 0;
+          const landed = Math.round((b.x - this.x0) / this.scale);
+          const d = Math.abs(landed - this.target);
+          const pts = d <= 1 ? 50 : d <= 4 ? 25 : d <= 8 ? 10 : 0;
+          e.add(pts);
+          this.msg = `Landed on ${clamp(landed, 0, 60)} — ` +
+            (d <= 1 ? `bang on ${this.target}! +50` : d <= 4 ? `so close to ${this.target}! +25` :
+             d <= 8 ? `not far off! +10` : `the flag was at ${this.target}.`);
+          if (pts >= 25) sfx.correct(2); else if (pts) sfx.pop(); else sfx.wrong();
+        }
+      }
+    } else if (this.phase === 'fetch'){
+      this.fetchT += dt;
+      const half = .8;
+      this.dogX = this.fetchT < half
+        ? this.x0 - 26 + (b.x - this.x0) * (this.fetchT / half)
+        : b.x - (b.x - (this.x0 - 26)) * ((this.fetchT - half) / half);
+      if (this.fetchT >= half) b.x = this.dogX + 22;
+      if (this.fetchT >= half * 2){
+        this.throwsLeft--;
+        if (this.throwsLeft <= 0) return e.over('Robo-Dog is worn out from all that fetching!');
+        Object.assign(b, { x: this.x0, y: this.gy - 12, vx: 0, vy: 0 });
+        this.dogX = this.x0 - 26; this.phase = 'aim'; this.newTarget(e);
+      }
+    }
+    /* draw */
+    c.clearRect(0, 0, e.W, e.H);
+    c.fillStyle = '#232b52'; c.fillRect(0, this.gy, e.W, e.H - this.gy);
+    c.strokeStyle = '#5a6398'; c.lineWidth = 2; c.font = `800 12px ${CFONT}`;
+    c.textAlign = 'center'; c.textBaseline = 'top'; c.fillStyle = '#aab3de';
+    for (let v = 0; v <= 50; v += 5){
+      const x = this.x0 + v * this.scale;
+      c.beginPath(); c.moveTo(x, this.gy); c.lineTo(x, this.gy + 8); c.stroke();
+      c.fillText(v, x, this.gy + 11);
+    }
+    const tx = this.x0 + this.target * this.scale;
+    c.strokeStyle = '#ffd23f'; c.lineWidth = 3;
+    c.beginPath(); c.moveTo(tx, this.gy); c.lineTo(tx, this.gy - 42); c.stroke();
+    c.fillStyle = '#ffd23f';
+    c.beginPath(); c.moveTo(tx, this.gy - 44); c.lineTo(tx + 42, this.gy - 34); c.lineTo(tx, this.gy - 24); c.fill();
+    c.fillStyle = '#3a2c00'; c.font = `900 13px ${CFONT}`; c.textBaseline = 'middle';
+    c.fillText(this.target, tx + 15, this.gy - 34);
+    c.fillStyle = '#f4f6ff'; c.font = `900 17px ${CFONT}`; c.textBaseline = 'alphabetic';
+    c.fillText(this.phase === 'aim' ? `Land the bone near ${this.target}!` : this.msg || '…', e.W / 2, 30);
+    if (this.drag){
+      c.strokeStyle = '#3fe0ff'; c.lineWidth = 3; c.setLineDash([7, 7]);
+      c.beginPath(); c.moveTo(b.x, b.y);
+      c.lineTo(b.x + (this.drag.x0 - this.drag.x) * 1.15, b.y + (this.drag.y0 - this.drag.y) * 1.15 - 30);
+      c.stroke(); c.setLineDash([]);
+    }
+    const dx2 = this.dogX;
+    c.fillStyle = '#8f9bd9'; c.strokeStyle = '#3d468c'; c.lineWidth = 2.5;
+    c.beginPath(); c.roundRect(dx2 - 20, this.gy - 26, 34, 18, 7); c.fill(); c.stroke();
+    c.beginPath(); c.roundRect(dx2 + 8, this.gy - 38, 18, 16, 6); c.fill(); c.stroke();
+    c.fillStyle = '#12162e';
+    c.beginPath(); c.arc(dx2 + 14, this.gy - 31, 2.2, 0, 7); c.arc(dx2 + 21, this.gy - 31, 2.2, 0, 7); c.fill();
+    c.strokeStyle = '#8f9bd9'; c.lineWidth = 4;
+    const wag = this.phase === 'fetch' ? Math.sin(performance.now() / 60) * 6 : 2;
+    c.beginPath(); c.moveTo(dx2 - 20, this.gy - 22); c.lineTo(dx2 - 30, this.gy - 30 - wag); c.stroke();
+    c.fillStyle = '#f4f6ff'; c.strokeStyle = '#aab3de'; c.lineWidth = 2;
+    c.beginPath(); c.roundRect(b.x - 12, b.y - 5, 24, 9, 4.5); c.fill(); c.stroke();
+    c.beginPath(); c.arc(b.x - 12, b.y - 3, 4, 0, 7); c.arc(b.x - 12, b.y + 3, 4, 0, 7);
+    c.arc(b.x + 12, b.y - 3, 4, 0, 7); c.arc(b.x + 12, b.y + 3, 4, 0, 7); c.fill();
+  },
+};
+
+/* ============================================================
+   7. STORM CATCHER — Weather-in-a-Jar
+   ============================================================ */
+GAMES.weather = {
+  title: 'Storm Catcher',
+  how: 'Catch raindrops in the beaker — each drop shows how much it fills! Pour at the 20 line for a PERFECT potion. Dodge the lightning, it splashes 5 back out!',
+  get art(){ return invArt(6); },
+  start(e){
+    this.px = e.W / 2; this.dir = 0; this.fill = 0; this.pours = 0;
+    this.drops = []; this.dt2 = .4; this.bt = 3; this.timeLeft = 75; this.flash = 0; this.pourA = 0;
+  },
+  move(x){ this.px = x; },
+  key(k, d){ this.dir = d ? (k === 'ArrowLeft' ? -1 : k === 'ArrowRight' ? 1 : this.dir) : 0; },
+  tick(dt, e){
+    this.timeLeft -= dt;
+    if (this.timeLeft <= 0) return e.over(`${this.pours} potion${this.pours === 1 ? '' : 's'} of bottled weather!`);
+    e.info(`⏱ ${Math.ceil(this.timeLeft)}s · 🧪 ${this.pours}`);
+    this.px = clamp(this.px + this.dir * 520 * dt, 45, e.W - 45);
+    this.flash = Math.max(0, this.flash - dt * 3);
+    this.pourA = Math.max(0, this.pourA - dt * 2);
+    this.dt2 -= dt;
+    if (this.dt2 <= 0){
+      this.dt2 = Math.max(.34, .62 - e.t * .003);
+      const v = pick([1, 1, 1, 2, 2, 5]);
+      this.drops.push({ x: 30 + rng() * (e.W - 60), y: -14, v, vy: 190 + rng() * 130, bolt: false });
+    }
+    this.bt -= dt;
+    if (this.bt <= 0){ this.bt = 2.2 + rng() * 2; this.drops.push({ x: 30 + rng() * (e.W - 60), y: -20, v: 0, vy: 330, bolt: true }); }
+    const by = e.H - 26, bw = 46;
+    this.drops = this.drops.filter(d => {
+      d.y += d.vy * dt;
+      if (d.y > by - 44 && d.y < by + 10 && Math.abs(d.x - this.px) < bw){
+        if (d.bolt){ this.fill = Math.max(0, this.fill - 5); this.flash = 1; sfx.wrong(); }
+        else {
+          this.fill += d.v; sfx.note(300 + d.v * 60, .08);
+          if (this.fill >= 20){
+            const perfect = this.fill <= 22;
+            e.add(perfect ? 50 : 15);
+            this.pours++; this.pourA = 1;
+            if (perfect) sfx.correct(3); else sfx.pop();
+            this.msg = perfect ? `PERFECT ${this.fill}! +50` : `${this.fill}… sloshed over! +15`;
+            this.msgT = 1.6; this.fill = 0;
+          }
+        }
+        return false;
+      }
+      return d.y < e.H + 30;
+    });
+    this.msgT = Math.max(0, (this.msgT || 0) - dt);
+    /* draw */
+    const c = e.cx; c.clearRect(0, 0, e.W, e.H);
+    if (this.flash > 0){ c.fillStyle = `rgba(255,255,255,${this.flash * .25})`; c.fillRect(0, 0, e.W, e.H); }
+    c.fillStyle = '#39415f';
+    for (let i = 0; i < 4; i++){
+      const cxx = (e.W / 4) * i + 60 + Math.sin(performance.now() / 2300 + i * 2) * 16;
+      c.beginPath(); c.arc(cxx, 26, 20, 0, 7); c.arc(cxx + 22, 32, 16, 0, 7); c.arc(cxx - 22, 32, 15, 0, 7); c.fill();
+    }
+    for (const d of this.drops){
+      if (d.bolt){
+        c.strokeStyle = '#ffd23f'; c.lineWidth = 4; c.lineJoin = 'round';
+        c.beginPath(); c.moveTo(d.x + 5, d.y - 16); c.lineTo(d.x - 4, d.y); c.lineTo(d.x + 4, d.y + 2); c.lineTo(d.x - 5, d.y + 17); c.stroke();
+      } else {
+        const r = 8 + d.v * 2.4;
+        c.fillStyle = '#3fe0ff'; c.beginPath();
+        c.moveTo(d.x, d.y - r * 1.3); c.quadraticCurveTo(d.x + r, d.y, d.x, d.y + r * .8);
+        c.quadraticCurveTo(d.x - r, d.y, d.x, d.y - r * 1.3); c.fill();
+        c.fillStyle = '#04303c'; c.font = `900 ${9 + d.v * 1.6}px ${CFONT}`;
+        c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(d.v, d.x, d.y);
+      }
+    }
+    const bx = this.px;
+    c.fillStyle = 'rgba(63,224,255,.75)';
+    const fh = Math.min(this.fill / 24, 1) * 56;
+    c.fillRect(bx - bw + 6, by - fh, (bw - 6) * 2, fh);
+    c.strokeStyle = '#aab3de'; c.lineWidth = 3.5;
+    c.strokeRect(bx - bw + 6, by - 62, (bw - 6) * 2, 62);
+    const lineY = by - (20 / 24) * 56;
+    c.strokeStyle = '#ffd23f'; c.lineWidth = 2.5; c.setLineDash([6, 5]);
+    c.beginPath(); c.moveTo(bx - bw + 6, lineY); c.lineTo(bx + bw - 6, lineY); c.stroke(); c.setLineDash([]);
+    c.fillStyle = '#ffd23f'; c.font = `900 12px ${CFONT}`; c.textAlign = 'left'; c.textBaseline = 'middle';
+    c.fillText('20', bx + bw - 2, lineY);
+    c.fillStyle = '#f4f6ff'; c.font = `900 18px ${CFONT}`; c.textAlign = 'center';
+    c.fillText(this.fill, bx, by - 70);
+    if (this.msgT > 0){ c.font = `900 20px ${CFONT}`; c.fillStyle = '#b3ef3d'; c.fillText(this.msg, e.W / 2, 64); }
+  },
+};
+
+/* ============================================================
+   8. SHRINK ZAP — Shrink-Ray Torch
+   ============================================================ */
+GAMES.shrink = {
+  title: 'Shrink Zap',
+  how: 'Things are floating everywhere! Read the rule at the top and ZAP only the right numbers. Wrong zaps cost points. The rule keeps changing!',
+  get art(){ return invArt(7); },
+  rules(){
+    const N = ri(30, 70);
+    return pick([
+      { txt: 'Zap the ODD numbers!', ok: n => n % 2 === 1 },
+      { txt: 'Zap the EVEN numbers!', ok: n => n % 2 === 0 },
+      { txt: `Zap numbers BIGGER than ${N}!`, ok: n => n > N },
+      { txt: `Zap numbers SMALLER than ${N}!`, ok: n => n < N },
+      { txt: 'Zap the counting-in-10s numbers!', ok: n => n % 10 === 0 },
+      { txt: 'Zap the counting-in-5s numbers!', ok: n => n % 5 === 0 },
+    ]);
+  },
+  newRule(e){
+    this.rule = this.rules(); this.ruleHits = 0;
+    this.objs = []; this.ruleFlash = 1;
+    sfx.whoosh();
+  },
+  start(e){
+    this.timeLeft = 60; this.combo = 0; this.st = 0;
+    this.newRule(e);
+  },
+  spawnN(){
+    const r = this.rule;
+    for (let i = 0; i < 30; i++){ const n = ri(1, 99); if ((rng() < .55) === !!r.ok(n)) return n; }
+    return ri(1, 99);
+  },
+  down(x, y, e){
+    for (let i = this.objs.length - 1; i >= 0; i--){
+      const o = this.objs[i];
+      if (!o.dying && (o.x - x) ** 2 + (o.y - y) ** 2 < (o.r + 14) ** 2){
+        if (this.rule.ok(o.n)){
+          o.dying = 1; this.combo++; this.ruleHits++;
+          e.add(10 + Math.min(this.combo, 6) * 2);
+          sfx.zap();
+          if (this.ruleHits >= 7){ e.add(25); this.newRule(e); }
+        } else {
+          this.combo = 0; e.add(-5); o.flash = 1; sfx.wrong();
+        }
+        return;
+      }
+    }
+  },
+  tick(dt, e){
+    this.timeLeft -= dt;
+    if (this.timeLeft <= 0) return e.over(`Everything is adorably tiny now. Combo master: ${this.combo}!`);
+    e.info(`⏱ ${Math.ceil(this.timeLeft)}s · 🔥 ${this.combo}`);
+    this.ruleFlash = Math.max(0, this.ruleFlash - dt);
+    this.st -= dt;
+    if (this.st <= 0 && this.objs.length < 8){
+      this.st = .55;
+      const fromLeft = rng() < .5;
+      this.objs.push({
+        x: fromLeft ? -24 : e.W + 24, y: 70 + rng() * (e.H - 130),
+        vx: (fromLeft ? 1 : -1) * (55 + rng() * 85), vy: (rng() - .5) * 46,
+        n: this.spawnN(), r: 21 + rng() * 9, dying: 0, flash: 0, hue: pick(['#3fe0ff', '#b3ef3d', '#ff9f6e', '#9d86ff']),
+      });
+    }
+    this.objs = this.objs.filter(o => {
+      o.x += o.vx * dt; o.y += o.vy * dt;
+      o.flash = Math.max(0, o.flash - dt * 2);
+      if (o.dying){ o.dying += dt * 5; if (o.dying > 2) return false; }
+      return o.x > -40 && o.x < e.W + 40;
+    });
+    /* draw */
+    const c = e.cx; c.clearRect(0, 0, e.W, e.H);
+    c.fillStyle = this.ruleFlash > 0 ? '#ffd23f' : '#f4f6ff';
+    c.font = `900 ${this.ruleFlash > 0 ? 24 : 20}px ${CFONT}`;
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillText(this.rule.txt, e.W / 2, 32);
+    for (const o of this.objs){
+      const s = o.dying ? Math.max(0, 1 - (o.dying - 1)) : 1;
+      const r = o.r * s;
+      if (r < 1) continue;
+      c.fillStyle = o.flash > 0 ? '#c9503f' : o.hue;
+      c.strokeStyle = 'rgba(0,0,0,.35)'; c.lineWidth = 2.5;
+      c.beginPath(); c.arc(o.x, o.y, r, 0, 7); c.fill(); c.stroke();
+      c.fillStyle = '#12162e'; c.font = `900 ${Math.max(8, r * .8)}px ${CFONT}`;
+      c.fillText(o.n, o.x, o.y + 1);
+    }
+  },
+};
+
+/* ============================================================
+   9. MOON MELODY — Moon Piano
+   ============================================================ */
+GAMES.piano = {
+  title: 'Moon Melody',
+  how: 'Space notes drift down four moon-piano keys. Tap the key (or press D F J K) exactly when a note reaches the line — and you’ll play a real tune!',
+  get art(){ return invArt(8); },
+  freqs: [262, 294, 330, 349, 392, 440],
+  melody: [0,0,4,4,5,5,4, 3,3,2,2,1,1,0, 4,4,3,3,2,2,1, 4,4,3,3,2,2,1, 0,0,4,4,5,5,4, 3,3,2,2,1,1,0],
+  start(e){
+    this.notes = [];
+    let t = 2.2;
+    for (let loop = 0; loop < 2; loop++){
+      const beat = loop ? .42 : .52;
+      this.melody.forEach((p, i) => {
+        this.notes.push({ t, p, lane: p % 4, hit: false, missed: false });
+        t += (i % 7 === 6) ? beat * 2 : beat;
+      });
+      t += 1.2;
+    }
+    this.endT = t + 1; this.combo = 0; this.flash = [0, 0, 0, 0];
+  },
+  laneX(e, l){ return e.W * (l + .5) / 4; },
+  press(l, e){
+    this.flash[l] = 1;
+    const hitY = e.H - 78, speed = (e.H - 110) / 2.1;
+    let best = null, bd = 1e9;
+    for (const n of this.notes){
+      if (n.hit || n.missed || n.lane !== l) continue;
+      const d = Math.abs((n.t - e.t) * speed);
+      if (d < bd){ bd = d; best = n; }
+    }
+    if (best && bd < 34){
+      best.hit = true; this.combo++;
+      e.add(10 + Math.min(this.combo, 10));
+      sfx.note(this.freqs[best.p], .3);
+    } else { this.combo = 0; sfx.note(110, .12); }
+  },
+  down(x, y, e){ this.press(clamp(Math.floor(x / e.W * 4), 0, 3), e); },
+  key(k, d, e){
+    if (!d) return;
+    const i = ['d', 'f', 'j', 'k'].indexOf(k.toLowerCase());
+    const j = '1234'.indexOf(k);
+    if (i >= 0) this.press(i, e); else if (j >= 0) this.press(j, e);
+  },
+  tick(dt, e){
+    if (e.t > this.endT) return e.over('The moon applauds silently. Beautiful playing!');
+    const c = e.cx, hitY = e.H - 78, speed = (e.H - 110) / 2.1;
+    const cols = ['#ffd23f', '#3fe0ff', '#ff5d73', '#b3ef3d'];
+    for (const n of this.notes)
+      if (!n.hit && !n.missed && (e.t - n.t) * speed > 30){ n.missed = true; this.combo = 0; }
+    e.info(`🔥 combo ${this.combo}`);
+    c.clearRect(0, 0, e.W, e.H);
+    c.fillStyle = '#39415f';
+    for (let l = 0; l < 4; l++){
+      const x = this.laneX(e, l);
+      this.flash[l] = Math.max(0, this.flash[l] - dt * 4);
+      c.strokeStyle = 'rgba(90,99,152,.4)'; c.lineWidth = 1.5;
+      c.beginPath(); c.moveTo(l * e.W / 4, 0); c.lineTo(l * e.W / 4, e.H); c.stroke();
+      c.fillStyle = this.flash[l] > 0 ? cols[l] : '#232b52';
+      c.strokeStyle = cols[l]; c.lineWidth = 3;
+      c.beginPath(); c.roundRect(x - e.W / 9, hitY, e.W / 4.5, 52, 10); c.fill(); c.stroke();
+      c.fillStyle = this.flash[l] > 0 ? '#12162e' : cols[l]; c.font = `900 17px ${CFONT}`;
+      c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.fillText(['D', 'F', 'J', 'K'][l], x, hitY + 26);
+    }
+    c.strokeStyle = '#f4f6ff'; c.lineWidth = 2; c.setLineDash([8, 8]);
+    c.beginPath(); c.moveTo(0, hitY); c.lineTo(e.W, hitY); c.stroke(); c.setLineDash([]);
+    for (const n of this.notes){
+      if (n.hit) continue;
+      const y = hitY - (n.t - e.t) * speed;
+      if (y < -20 || y > e.H) continue;
+      c.fillStyle = n.missed ? 'rgba(122,132,184,.4)' : cols[n.lane];
+      c.beginPath(); c.roundRect(this.laneX(e, n.lane) - 24, y - 11, 48, 22, 11); c.fill();
+    }
+    c.fillStyle = '#ffd23f'; c.font = `900 15px ${CFONT}`; c.textAlign = 'center';
+    c.beginPath(); c.arc(e.W - 44, 40, 17, 0, 7); c.fill();
+  },
+};
+
+/* ============================================================
+   10. TIME WARP — Time-Machine Alarm Clock
+   ============================================================ */
+GAMES.clock = {
+  title: 'Time Warp',
+  how: 'The time machine’s hand is spinning out of control! Tap to freeze it exactly on the time it asks for. It spins faster every round — 8 rounds!',
+  get art(){ return invArt(9); },
+  start(e){
+    this.round = 0; this.w = 2.4; this.msg = ''; this.msgT = 0;
+    this.nextRound(e);
+  },
+  nextRound(e){
+    this.round++;
+    if (this.round > 8) return e.over('Time itself says thank you.');
+    this.hour = ri(1, 12);
+    this.half = this.round > 2 && rng() < .45;
+    this.ang = rng() * Math.PI * 2;
+    this.spinning = true;
+    this.w += .55;
+    e.info(`Round ${this.round}/8`);
+  },
+  targetAng(){ return ((this.hour % 12) + (this.half ? .5 : 0)) / 12 * Math.PI * 2; },
+  down(x, y, e){
+    if (!this.spinning) return;
+    this.spinning = false;
+    let d = Math.abs(this.ang % (Math.PI * 2) - this.targetAng());
+    d = Math.min(d, Math.PI * 2 - d) * 180 / Math.PI;
+    const pts = d <= 9 ? 50 : d <= 22 ? 25 : d <= 45 ? 10 : 0;
+    e.add(pts);
+    this.msg = pts === 50 ? 'SPOT ON! +50' : pts === 25 ? 'So close! +25' : pts ? 'Not bad! +10' : 'Whoosh — time flew by!';
+    this.msgT = 1.4;
+    if (pts >= 25) sfx.correct(2); else if (pts) sfx.pop(); else sfx.wrong();
+    e.timeout(() => this.nextRound(e), 1300);
+  },
+  tick(dt, e){
+    if (this.spinning) this.ang += this.w * dt;
+    this.msgT = Math.max(0, this.msgT - dt);
+    const c = e.cx, cx0 = e.W / 2, cy0 = e.H / 2 + 16, R = Math.min(e.W, e.H) * .3;
+    c.clearRect(0, 0, e.W, e.H);
+    c.fillStyle = '#f4f6ff'; c.font = `900 20px ${CFONT}`; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillText(this.half ? `Stop at HALF PAST ${this.hour}!` : `Stop at ${this.hour} O'CLOCK!`, e.W / 2, 30);
+    if (this.msgT > 0){ c.fillStyle = '#b3ef3d'; c.fillText(this.msg, e.W / 2, 58); }
+    c.fillStyle = '#dfe6ff'; c.strokeStyle = '#3d468c'; c.lineWidth = 6;
+    c.beginPath(); c.arc(cx0, cy0, R, 0, 7); c.fill(); c.stroke();
+    c.fillStyle = '#12162e'; c.font = `900 ${R * .17}px ${CFONT}`;
+    for (let h = 1; h <= 12; h++){
+      const a = h / 12 * Math.PI * 2;
+      c.fillText(h, cx0 + Math.sin(a) * R * .8, cy0 - Math.cos(a) * R * .8);
+    }
+    const ta = this.targetAng();
+    c.strokeStyle = 'rgba(255,210,63,.5)'; c.lineWidth = 7; c.lineCap = 'round';
+    c.beginPath(); c.moveTo(cx0, cy0); c.lineTo(cx0 + Math.sin(ta) * R * .6, cy0 - Math.cos(ta) * R * .6); c.stroke();
+    c.strokeStyle = '#e03a52'; c.lineWidth = 5;
+    c.beginPath(); c.moveTo(cx0, cy0); c.lineTo(cx0 + Math.sin(this.ang) * R * .66, cy0 - Math.cos(this.ang) * R * .66); c.stroke();
+    c.fillStyle = '#3d468c'; c.beginPath(); c.arc(cx0, cy0, 7, 0, 7); c.fill();
+  },
+};
+
+/* ============================================================
+   11. THE IMPOSSIBLE CHALLENGE — boss finale
+   ============================================================ */
+const BOSS_ART = `<svg viewBox="0 0 100 100">
+  <circle cx="50" cy="52" r="34" fill="#39415f" stroke="#12162e" stroke-width="3"/>
+  <g fill="#2c3364"><circle cx="50" cy="14" r="8"/><circle cx="17" cy="35" r="7"/><circle cx="83" cy="35" r="7"/>
+  <circle cx="20" cy="74" r="7"/><circle cx="80" cy="74" r="7"/></g>
+  <circle cx="50" cy="52" r="20" fill="#12162e"/>
+  <circle cx="50" cy="52" r="13" fill="#9d86ff">
+    <animate attributeName="r" values="13;10;13" dur="1.4s" repeatCount="indefinite"/></circle>
+  <circle cx="50" cy="52" r="5.5" fill="#12162e"/>
+  <path d="M30 30l10 8M70 30l-10 8" stroke="#ff5d73" stroke-width="4" stroke-linecap="round"/>
+</svg>`;
+GAMES.impossible = {
+  title: 'The Impossible Challenge',
+  how: 'The Impossibility Engine has gone haywire and only YOUR maths can stop it! Answer before each fuse burns out. 21 hits shuts it down — you have 3 power cores. Fast answers hit twice as hard!',
+  art: BOSS_ART,
+  start(e){
+    this.hp = 21; this.cores = 3; this.streak = 0; this.hits = 0;
+    this.fuse = 1; this.fuseLen = 12; this.lock = false; this.won = false; this.pad = '';
+    e.dom.style.pointerEvents = 'auto';
+    e.dom.innerHTML = `<div class="imp-wrap">
+      <div class="imp-boss" id="imp-boss">${BOSS_ART}
+        <div style="flex:1"><div class="imp-hp"><div id="imp-hpbar" style="width:100%"></div></div></div>
+        <div class="imp-cores" id="imp-cores">⚡⚡⚡</div></div>
+      <div class="imp-fuse"><div id="imp-fusebar" style="width:100%"></div></div>
+      <div class="imp-q">
+        <div class="imp-machine" id="imp-machine"></div>
+        <div class="imp-text" id="imp-text"></div>
+        <div class="imp-feedback" id="imp-feedback"></div>
+      </div>
+      <div class="imp-in" id="imp-in"></div></div>`;
+    e.dom.onclick = ev => {
+      if (this.lock || this.won) return;
+      const opt = ev.target.closest('.opt');
+      if (opt) return this.answer(opt.dataset.v, e);
+      const pk = ev.target.closest('.pk');
+      if (!pk) return;
+      if (pk.dataset.k === 'del') this.pad = this.pad.slice(0, -1);
+      else if (pk.dataset.k === 'go'){ if (this.pad) return this.answer(this.pad, e); }
+      else if (this.pad.length < 3) this.pad += pk.dataset.k;
+      const d = $('pad-display2'); if (d) d.textContent = this.pad;
+    };
+    this.ask(e);
+  },
+  ask(e){
+    const m = pick(MACHINES);
+    this.q = genQuestion(m.levels[m.levels.length - 1]);
+    this.pad = '';
+    $('imp-machine').textContent = `${m.name} attacks!`;
+    $('imp-text').innerHTML = this.q.text ? this.q.text.replace('□', '<span class="blank"></span>') : this.q.prompt;
+    $('imp-feedback').textContent = ''; $('imp-feedback').style.color = '';
+    $('imp-in').innerHTML = this.q.mode === 'mcq'
+      ? `<div class="mcq">${this.q.options.map(o => `<button class="opt" data-v="${o}">${o}</button>`).join('')}</div>`
+      : `<div id="pad-display2"></div><div class="pad-grid" style="margin:0 auto">
+          ${[1,2,3,4,5,6,7,8,9].map(d2 => `<button class="pk" data-k="${d2}">${d2}</button>`).join('')}
+          <button class="pk del" data-k="del">⌫</button><button class="pk" data-k="0">0</button>
+          <button class="pk go" data-k="go">✓</button></div>`;
+    this.fuseLen = Math.max(6, 12 - this.hits * .3);
+    this.fuse = 1; this.lock = false;
+    say(this.q.tts);
+  },
+  answer(v, e){
+    if (this.lock || this.won) return;
+    this.lock = true;
+    const fb = $('imp-feedback');
+    if (String(v) === String(this.q.answer)){
+      const crit = this.fuse > .55;
+      const dmg = (crit ? 2 : 1) + (this.streak >= 4 ? 1 : 0);
+      this.streak++; this.hits++;
+      this.hp = Math.max(0, this.hp - dmg);
+      e.add(dmg * 10);
+      $('imp-hpbar').style.width = (this.hp / 21 * 100) + '%';
+      fb.textContent = crit ? `⚡ CRITICAL HIT! −${dmg}` : `Hit! −${dmg}`;
+      fb.style.color = 'var(--good)';
+      const boss = $('imp-boss');
+      boss.classList.remove('hit'); void boss.offsetWidth; boss.classList.add('hit');
+      sfx.correct(this.streak); if (crit) sfx.zap();
+      burstAt($('imp-boss'));
+      if (this.hp <= 0) return this.win(e);
+      e.timeout(() => this.ask(e), 800);
+    } else {
+      this.fail(`Not quite — it's ${this.q.answer}. ${this.q.explain}`, e);
+    }
+  },
+  fail(msg, e){
+    this.lock = true; this.streak = 0; this.cores--;
+    $('imp-cores').textContent = '⚡'.repeat(this.cores) + '▫'.repeat(3 - this.cores);
+    const fb = $('imp-feedback');
+    fb.textContent = msg; fb.style.color = 'var(--bad)';
+    sfx.wrong();
+    if (this.cores <= 0)
+      return e.timeout(() => e.over(`The Engine escaped with ${this.hp} power left… but ${this.hits} hits is heroic. Try again!`), 1400);
+    e.timeout(() => this.ask(e), 2200);
+  },
+  win(e){
+    this.won = true;
+    e.add(50 + this.cores * 50);
+    confetti(); sfx.fanfare();
+    say('You did the impossible! The Impossibility Engine is tamed!');
+    e.timeout(() => e.over('🏆 THE IMPOSSIBLE… DONE! The Engine hums a happy tune now. The whole lab is safe, Chief Inventor!'), 1600);
+  },
+  key(k, d, e){
+    if (!d || this.lock || this.won || !this.q) return;
+    if (this.q.mode === 'mcq'){
+      const i = '1234'.indexOf(k);
+      const opts = e.dom.querySelectorAll('.opt');
+      if (i >= 0 && opts[i]) this.answer(opts[i].dataset.v, e);
+    } else {
+      if (/^[0-9]$/.test(k) && this.pad.length < 3) this.pad += k;
+      else if (k === 'Backspace') this.pad = this.pad.slice(0, -1);
+      else if (k === 'Enter' && this.pad) return this.answer(this.pad, e);
+      const d2 = $('pad-display2'); if (d2) d2.textContent = this.pad;
+    }
+  },
+  tick(dt, e){
+    if (this.lock || this.won) return;
+    this.fuse -= dt / this.fuseLen;
+    const bar = $('imp-fusebar');
+    if (bar) bar.style.width = Math.max(0, this.fuse * 100) + '%';
+    if (this.fuse <= 0) this.fail('The fuse burnt out! Quicker next time!', e);
+  },
+};
+
+/* ============================================================
+   HALL integration — play buttons + Impossible unlock
+   ============================================================ */
+const GAME_FOR_INV = ['jetpack', 'radar', 'cat', 'jelly', 'skates', 'robodog', 'weather', 'shrink', 'piano', 'clock'];
+function allStarred(){
+  return MACHINES.every(m => m.levels.every((_, i) => (mstate(m.id).stars[i + 1] || 0) >= 1));
+}
+function starredCount(){
+  let n = 0;
+  MACHINES.forEach(m => m.levels.forEach((_, i) => { if ((mstate(m.id).stars[i + 1] || 0) >= 1) n++; }));
+  return n;
+}
+const TOTAL_LEVELS = MACHINES.reduce((s2, m) => s2 + m.levels.length, 0);
+function impossibleUnlocked(){
+  return S.inventions.built.length >= INVENTIONS.length && allStarred();
+}
+function renderHall(){
+  $('hall-sparks').textContent = S.sparks;
+  const inv = S.inventions;
+  const cards = INVENTIONS.map((it, i) => {
+    const built = inv.built.includes(i), current = i === inv.current && !built;
+    const gidz = GAME_FOR_INV[i];
+    const best = S.arcade[gidz] || 0;
+    const state = built
+      ? `<div class="inv-desc">${it.desc}</div>
+         ${best ? `<div class="inv-best">🏅 Best: ${best}</div>` : ''}
+         <button class="btn cyan small btn-play-inv" data-g="${gidz}">▶ ${GAMES[gidz].title}</button>`
+      : current
+        ? `<div class="bp-slots" style="justify-content:center">${Array.from({ length: it.pieces }, (_, k) =>
+            `<span class="bp-slot ${k < inv.pieces ? 'got' : ''}"></span>`).join('')}</div>
+           <div class="inv-state">build it to unlock its mini-game!</div>`
+        : `<div class="inv-state">🔒 Invent more to unlock</div>`;
+    return `<div class="inv-card card ${built ? 'built' : current ? 'current' : 'locked'}">
+      ${current ? '<div class="workbench">On the workbench</div>' : ''}
+      <div class="inv-art"><svg viewBox="0 0 100 100">${it.art}</svg></div>
+      <h3>${it.name}</h3>${state}</div>`;
+  });
+  const unlocked = impossibleUnlocked();
+  const impBest = S.arcade.impossible || 0;
+  cards.push(unlocked
+    ? `<div class="inv-card card impossible unlocked">
+        <div class="inv-art">${BOSS_ART}</div>
+        <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+          <h3>💥 The Impossible Challenge</h3>
+          <div class="inv-desc">Every machine. Every skill. One haywire Engine. Can you tame it?</div>
+          ${impBest ? `<div class="inv-best">🏅 Best: ${impBest}</div>` : ''}
+          <button class="btn primary small btn-play-inv" data-g="impossible">⚡ Face the Engine</button>
+        </div></div>`
+    : `<div class="inv-card card impossible locked">
+        <div class="inv-art">${BOSS_ART}</div>
+        <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+          <h3>❓ The Impossible Challenge</h3>
+          <div class="inv-desc">Something enormous is humming behind this door…</div>
+          <div class="inv-state">🔒 Build all ${INVENTIONS.length} inventions (${S.inventions.built.length}/${INVENTIONS.length})
+            and star every machine level (${starredCount()}/${TOTAL_LEVELS})</div>
+        </div></div>`);
+  $('hall-grid').innerHTML = cards.join('');
+}
+$('hall-grid').addEventListener('click', e => {
+  const b = e.target.closest('.btn-play-inv');
+  if (b){ sfx.whoosh(); Arcade.open(b.dataset.g); }
+});
+
+/* test hooks */
+UI.play = id => { Arcade.open(id); return SCREEN; };
+UI.beginGame = () => { Arcade.begin(); return true; };
+UI.arcade = () => Arcade.state();
+UI.endGame = n => { Arcade.forceEnd(n); return { ...S.arcade }; };
 </script>
 </body>
 </html>

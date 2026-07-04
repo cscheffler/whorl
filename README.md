@@ -265,6 +265,25 @@ seven machines; finished missions earn **blueprint pieces** that build silly
 inventions (Bubble-Powered Jetpack, Sock-Finding Radar…) for your Hall of
 Inventions.
 
+**Every built invention unlocks its own mini-game** — a proper arcade reward,
+each with its own mechanics and a saved best score: *Bubble Flight* (hold to
+fly, dodge gear towers), *Sock Hunt* (radar-distance deduction), *Cat Chat*
+(miaow-sequence memory), *Jelly Bounce* (springy paddle + stars), *Skate Dash*
+(lane-hopping runner where the boost gates favour the **bigger** number),
+*Fetch!* (catapult the bone onto a number-line target), *Storm Catcher* (fill
+the beaker to the 20 line, dodge lightning), *Shrink Zap* (zap only numbers
+matching the rule — odd, bigger-than-50, counting-in-5s…), *Moon Melody*
+(falling-note rhythm piano that plays a real tune) and *Time Warp* (freeze the
+spinning hand at "3 o'clock" or "half past 7"). The maths inside them is
+deliberately light — they're the treat, not the lesson.
+
+And at the very end: build **all ten inventions** and earn at least one star
+on **every level of every machine**, and the Hall reveals **The Impossible
+Challenge** — a boss fight against the haywire *Impossibility Engine* that
+draws questions from the top level of every machine, with a burning fuse per
+question, critical hits for fast answers and three power cores. Twenty-one
+hits shuts it down.
+
 | Machine | Trains |
 |---|---|
 | Power Cells | number bonds to 5/10/20/100 |

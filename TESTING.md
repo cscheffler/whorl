@@ -282,6 +282,11 @@ UI.state();                  // screen, sparks, mission progress, machines, fact
 UI.grant({sparks, inventions, pieces, name, avatar}); // fixtures for hall/dashboard shots
 UI.export();                 // progress-file JSON (what the Save button downloads)
 UI.import(jsonOrObject);     // load progress (what the Load button applies)
+UI.play('jetpack');          // open a mini-game (see GAME_FOR_INV + 'impossible')
+UI.beginGame();              // press its Play button programmatically
+UI.arcade();                 // {id, running, done, score} of the current game
+UI.endGame(n);               // force game-over (optionally with score n)
+UI.grant({allLevels:true});  // 3-star every machine level (Impossible gate fixture)
 ```
 
 A scripted mission is a synchronous loop — no waits needed:
@@ -305,10 +310,14 @@ To catch **feedback states** mid-flight, answer in `--setup` and use a short
 **Real-input suite.** `tools/sparklab_test.py` drives the game the way a child
 does — real clicks on doors/options/keypad, physical keyboard digits + Enter,
 the press-and-hold grown-ups gear (a quick tap must *not* open it), pause/quit
-spark banking, a reload to prove `localStorage` persistence, and a progress
+spark banking, a reload to prove `localStorage` persistence, a progress
 export→reset→import round-trip through the real file picker (the export button
 must trigger a download; corrupt files must be rejected without touching
-state) — 25 checks, must end `25/25` with no console errors:
+state), and the arcade: all 10 mini-games must open, run their loop and end
+cleanly, best scores must persist, and The Impossible Challenge must stay
+locked until `inventions:10 + allLevels:true`, then pose questions whose
+correct answers damage the boss — 31 checks, must end `31/31` with no console
+errors:
 
 ```sh
 venv/bin/python tools/sparklab_test.py
@@ -342,6 +351,6 @@ Gotchas found during bring-up:
 ## Files
 
 - `tools/shoot.py` — the harness.
-- `tools/sparklab_test.py` — SparkLab real-input interaction suite (25 checks).
+- `tools/sparklab_test.py` — SparkLab real-input interaction suite (31 checks).
 - `tools/shots/` — screenshot output (gitignored).
 - `tools/selftest.html` — temporary stand-in for validating the harness.

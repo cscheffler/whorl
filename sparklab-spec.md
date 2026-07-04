@@ -83,6 +83,37 @@ interleaved practice that turns skills into fluency.
 - A wrong answer always shows the correct answer **with the visual model**
   (see it, not just read it), costs nothing but the star count, and re-queues.
 
+### 3b. Invention mini-games (the arcade layer)
+
+Every **built invention unlocks a mini-game** played from its Hall card — a
+real arcade reward whose mechanics come from the invention itself. Numeracy is
+woven in but deliberately downplayed; these are the treat, not the lesson. All
+are replayable with a saved best score (`S.arcade`), keyboard + touch input,
+and share one arcade framework (canvas/DOM stage, rAF loop, intro/end
+overlays).
+
+| Invention | Mini-game | Mechanic | Hidden numeracy |
+|---|---|---|---|
+| Bubble Jetpack | **Bubble Flight** | hold-to-thrust flappy dodge | numbered bubbles score their value |
+| Sock Radar | **Sock Hunt** | grid deduction: pings show step-distance | Manhattan distance reasoning |
+| Cat Translator | **Cat Chat** | Simon-style growing miaow sequence | sequence memory/length |
+| Jelly Trampoline | **Jelly Bounce** | paddle-catch, springy sweet spot, stars | tallying, trajectory sense |
+| Rocket Skates | **Skate Dash** | two-lane runner, dodge crates | boost gates: pick the **bigger** number |
+| Robo-Dog | **Fetch!** | catapult drag-to-throw, dog retrieves | land near a number-line target (estimation) |
+| Weather-in-a-Jar | **Storm Catcher** | catch rain, dodge lightning | fill the beaker to the 20 line (1/2/5 drops) |
+| Shrink-Ray | **Shrink Zap** | reaction zapper, rule changes each wave | odd/even, >/<, counting-in-2s/5s/10s |
+| Moon Piano | **Moon Melody** | falling-note rhythm game, real synth tune | beat timing/counting |
+| Alarm Clock | **Time Warp** | stop the fast-spinning hand on the target | o'clock & half-past reading |
+
+**The Impossible Challenge** (finale): revealed in the Hall only when **all 10
+inventions are built AND every level of every machine has ≥1 star** (the
+Daily Experiment doesn't count). A boss fight against the haywire
+*Impossibility Engine*: questions drawn from the **top level of every
+machine**, a burning fuse per question (12s, shrinking as you land hits),
+critical double-damage for fast answers, streak bonuses, 3 power cores; 21
+hits wins. Replayable for best score — the fuse maths makes repeat wins
+progressively harder.
+
 ---
 
 ## 4. Principle mappings
@@ -172,8 +203,13 @@ keyboard playable; narration doubles as reading support.
 5. **Results** — stars with fanfare, sparks tally, quick-answer count,
    blueprint piece slotting into the current invention, effort-praise line,
    then: Play again / Next level / Back to lab.
-6. **Hall of Inventions** — gallery; built gadgets animate; tap for flavour
-   text; the one on the workbench shows collected pieces.
+6. **Hall of Inventions** — gallery; built gadgets animate and carry their
+   mini-game's Play button + best score; the one on the workbench shows
+   collected pieces; The Impossible Challenge card sits at the end (locked:
+   progress toward the gate; unlocked: glowing).
+6b. **Arcade** — shared mini-game screen: title bar with score/status chips,
+   canvas + DOM stage, how-to-play intro overlay (narrated), end overlay with
+   score, best and replay.
 7. **Grown-ups corner** (hold-to-open gear) — progress dashboard: per-machine
    star ladders, per-fact fluency heatmap (sequential single-hue ramp),
    accuracy & speed stat tiles, total practice time. Also home to
@@ -224,6 +260,9 @@ UI.state();                  // {screen, sparks, mission:{i,n,correct,streak}, �
 UI.grant({sparks:500, inventions:3}); // fixture for hall/dashboard shots
 UI.export();                 // progress-file JSON (the Save button's payload)
 UI.import(jsonOrObject);     // apply a progress file (the Load button's action)
+UI.play('jetpack');          // open a mini-game; UI.beginGame() presses Play
+UI.arcade();                 // {id, running, done, score}
+UI.endGame(n);               // force game-over; UI.grant({allLevels:true}) for the finale gate
 ```
 
 Harness recipes (all must run with a clean console / no `pageerror`):
