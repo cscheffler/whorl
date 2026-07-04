@@ -137,6 +137,14 @@ with sync_playwright() as p:
     ok('all 10 mini-games run and end cleanly', allok)
     ok('mini-game best scores persisted', pg.evaluate("Object.keys(UI.state().arcade).length") >= 10)
 
+    # --- Moon Melody: starts gentle, speeds up with hits ---
+    pg.evaluate("UI.play('piano'); UI.beginGame()")
+    pg.wait_for_timeout(150)
+    r0 = pg.evaluate("GAMES.piano.rate")
+    r20 = pg.evaluate("GAMES.piano.hits=20; GAMES.piano.rate=Math.min(1.25,.75+GAMES.piano.hits*.012); GAMES.piano.rate")
+    ok('piano: starts slow and speeds up with score', r0 <= 0.75 and 0.95 < r20 <= 1.25)
+    pg.evaluate("UI.endGame()")
+
     # --- Fetch!: slingshot power + direction regression ---
     pg.evaluate("UI.play('robodog'); UI.beginGame()")
     pg.wait_for_timeout(150)
