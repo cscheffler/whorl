@@ -137,6 +137,22 @@ with sync_playwright() as p:
     ok('all 10 mini-games run and end cleanly', allok)
     ok('mini-game best scores persisted', pg.evaluate("Object.keys(UI.state().arcade).length") >= 10)
 
+    # --- Fetch!: slingshot power + direction regression ---
+    pg.evaluate("UI.play('robodog'); UI.beginGame()")
+    pg.wait_for_timeout(150)
+    pg.evaluate("const g=GAMES.robodog; g.down(500,200); g.move(160,420); g.up()")
+    v = pg.evaluate("({vx:GAMES.robodog.bone.vx, vy:GAMES.robodog.bone.vy})")
+    ok('fetch: big backward pull throws hard and forwards', v['vx'] > 400 and v['vy'] < -250)
+    pg.wait_for_timeout(1250)
+    ok('fetch: bone lands far down the number line', pg.evaluate("GAMES.robodog.bone.x") > 350)
+    pg.evaluate("""
+      const g=GAMES.robodog;
+      if (g.phase!=='aim'){ g.phase='aim'; Object.assign(g.bone,{x:60,y:g.gy-12,vx:0,vy:0}); }
+      g.down(200,300); g.move(320,280); g.up();   // forward drag must NOT fire
+    """)
+    ok('fetch: forward drag does not throw', pg.evaluate("GAMES.robodog.phase") == 'aim')
+    pg.evaluate("UI.endGame()")
+
     # --- The Impossible Challenge: gating + boss fight ---
     pg.evaluate("UI.reset(); UI.fx(false); UI.seed(6); UI.grant({name:'Testo'}); UI.go('hall')")
     ok('impossible challenge locked at start',

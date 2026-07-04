@@ -316,7 +316,7 @@ must trigger a download; corrupt files must be rejected without touching
 state), and the arcade: all 10 mini-games must open, run their loop and end
 cleanly, best scores must persist, and The Impossible Challenge must stay
 locked until `inventions:10 + allLevels:true`, then pose questions whose
-correct answers damage the boss — 31 checks, must end `31/31` with no console
+correct answers damage the boss — 34 checks, must end `34/34` with no console
 errors:
 
 ```sh
@@ -351,6 +351,6 @@ Gotchas found during bring-up:
 ## Files
 
 - `tools/shoot.py` — the harness.
-- `tools/sparklab_test.py` — SparkLab real-input interaction suite (31 checks).
+- `tools/sparklab_test.py` — SparkLab real-input interaction suite (34 checks).
 - `tools/shots/` — screenshot output (gitignored).
 - `tools/selftest.html` — temporary stand-in for validating the harness.

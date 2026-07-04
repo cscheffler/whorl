@@ -2372,7 +2372,7 @@ window.UI = {
    ============================================================ */
 #scr-arcade .wrap{max-width:900px;gap:10px;flex:1}
 #arcade-stage{position:relative;flex:1;min-height:330px;border-radius:22px;overflow:hidden;
-  border:3px solid var(--line);box-shadow:var(--shadow);
+  border:3px solid var(--line);box-shadow:var(--shadow);touch-action:none;
   background:radial-gradient(120% 100% at 50% 0%, #171d3f 0%, #0d1128 70%)}
 #arcade-cv{position:absolute;inset:0;width:100%;height:100%}
 #arcade-dom{position:absolute;inset:0;pointer-events:none}
@@ -2926,7 +2926,7 @@ GAMES.skates = {
    ============================================================ */
 GAMES.robodog = {
   title: 'Fetch!',
-  how: 'Drag back from the bone like a catapult, let go to throw! Land it near the number on the flag and Robo-Dog will fetch it. 8 throws!',
+  how: 'Pull BACKWARDS from the bone like a catapult — the dots show where it will fly! The further you pull, the further it flies. Land it near the flag number. 8 throws!',
   get art(){ return invArt(5); },
   start(e){
     this.throwsLeft = 8; this.phase = 'aim'; this.drag = null; this.msg = '';
@@ -2937,13 +2937,23 @@ GAMES.robodog = {
   newTarget(e){ this.target = ri(8, 48); e.info(`🦴 ${this.throwsLeft} throws left`); },
   down(x, y){ if (this.phase === 'aim') this.drag = { x0: x, y0: y, x, y }; },
   move(x, y){ if (this.drag){ this.drag.x = x; this.drag.y = y; } },
+  /* slingshot: pull magnitude → power, pull angle → loft (clamped 17°–70°).
+     Only arms when pulling BACKWARDS, so the throw always goes forwards. */
+  pull(){
+    const p = this.drag;
+    if (!p) return null;
+    const pdx = p.x0 - p.x, pdy = p.y0 - p.y, mag = Math.hypot(pdx, pdy);
+    if (pdx < 14 || mag < 22) return null;
+    const power = clamp(mag * 2.6, 220, 780);
+    const ang = clamp(Math.atan2(-pdy, pdx), .3, 1.22);
+    return { vx: Math.cos(ang) * power, vy: -Math.sin(ang) * power };
+  },
   up(){
-    if (!this.drag || this.phase !== 'aim') return void (this.drag = null);
-    const dx = this.drag.x0 - this.drag.x, dy = this.drag.y0 - this.drag.y;
+    if (this.phase !== 'aim') return void (this.drag = null);
+    const v = this.pull();
     this.drag = null;
-    if (dx < 12 && Math.abs(dy) < 12) return;
-    this.bone.vx = clamp(dx * 3.4, 90, 640);
-    this.bone.vy = clamp(dy * 3.4 - 120, -720, -60);
+    if (!v) return;
+    this.bone.vx = v.vx; this.bone.vy = v.vy;
     this.phase = 'fly'; this.bounced = false; sfx.whoosh();
   },
   tick(dt, e){
@@ -3000,10 +3010,19 @@ GAMES.robodog = {
     c.fillStyle = '#f4f6ff'; c.font = `900 17px ${CFONT}`; c.textBaseline = 'alphabetic';
     c.fillText(this.phase === 'aim' ? `Land the bone near ${this.target}!` : this.msg || '…', e.W / 2, 30);
     if (this.drag){
-      c.strokeStyle = '#3fe0ff'; c.lineWidth = 3; c.setLineDash([7, 7]);
-      c.beginPath(); c.moveTo(b.x, b.y);
-      c.lineTo(b.x + (this.drag.x0 - this.drag.x) * 1.15, b.y + (this.drag.y0 - this.drag.y) * 1.15 - 30);
-      c.stroke(); c.setLineDash([]);
+      const v = this.pull();
+      if (v){ /* dotted trajectory preview, in front of the dog */
+        let x = b.x, y = b.y, vx = v.vx, vy = v.vy;
+        c.fillStyle = 'rgba(63,224,255,.9)';
+        for (let i = 0; i < 26; i++){
+          vy += 760 * .06; x += vx * .06; y += vy * .06;
+          if (y > this.gy - 6 || x > e.W) break;
+          c.beginPath(); c.arc(x, y, 3.6 - i * .08, 0, 7); c.fill();
+        }
+      } else {
+        c.fillStyle = '#ff8a5c'; c.font = `900 16px ${CFONT}`; c.textAlign = 'center';
+        c.fillText('Pull backwards, like a catapult! ⬅', e.W / 2, 56);
+      }
     }
     const dx2 = this.dogX;
     c.fillStyle = '#8f9bd9'; c.strokeStyle = '#3d468c'; c.lineWidth = 2.5;
