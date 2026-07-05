@@ -103,7 +103,7 @@ overlays).
 | Weather-in-a-Jar | **Storm Catcher** | catch rain, dodge lightning | fill the beaker to the 20 line (1/2/5 drops) |
 | Shrink-Ray | **Shrink Zap** | reaction zapper, rule changes each wave | odd/even, >/<, counting-in-2s/5s/10s |
 | Moon Piano | **Moon Melody** | falling-note rhythm game, real synth tune | beat timing/counting |
-| Alarm Clock | **Time Warp** | stop the fast-spinning hand on the target | o'clock & half-past reading |
+| Alarm Clock | **Time Twins** | 3 "days" over one star field; each day your recorded flight replays as a ghost that re-collects its route, so plan complementary paths | route planning, star values 1/2/5/10, spatial memory |
 
 **The Impossible Challenge** (finale): revealed in the Hall only when **all 10
 inventions are built AND every level of every machine has ≥1 star** (the

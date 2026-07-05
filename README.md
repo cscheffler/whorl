@@ -273,9 +273,11 @@ fly, dodge gear towers), *Sock Hunt* (radar-distance deduction), *Cat Chat*
 *Fetch!* (catapult the bone onto a number-line target), *Storm Catcher* (fill
 the beaker to the 20 line, dodge lightning), *Shrink Zap* (zap only numbers
 matching the rule — odd, bigger-than-50, counting-in-5s…), *Moon Melody*
-(falling-note rhythm piano that plays a real tune) and *Time Warp* (freeze the
-spinning hand at "3 o'clock" or "half past 7"). The maths inside them is
-deliberately light — they're the treat, not the lesson.
+(falling-note rhythm piano that plays a real tune) and *Time Twins* (fly back
+in time: each "day" your previous flight replays as a ghost that hoovers up
+the stars along its old route, so you must plan a fresh path — or race your
+own echo). The maths inside them is deliberately light — they're the treat,
+not the lesson.
 
 And at the very end: build **all ten inventions** and earn at least one star
 on **every level of every machine**, and the Hall reveals **The Impossible
