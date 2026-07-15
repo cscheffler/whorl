@@ -45,7 +45,7 @@ with sync_playwright() as p:
        st['mission']['streak'] == 1 and st['mission']['sparks'] >= 10)
     pg.evaluate("UI.next()")
 
-    # --- MCQ real click: wrong -> requeue ---
+    # --- MCQ real click: wrong -> requeue, explanation waits for Got it! ---
     q = pg.evaluate("UI.question()")
     wrong = [o for o in q['options'] if str(o) != str(q['answer'])][0]
     pg.click(f'.mcq .opt[data-v="{wrong}"]')
@@ -54,7 +54,14 @@ with sync_playwright() as p:
        st['mission']['streak'] == 0 and st['mission']['retries'] == 1)
     fb = pg.text_content('#q-feedback')
     ok('wrong answer shows explanation', 'Not quite' in fb)
-    pg.evaluate("UI.next()")
+    ok('wrong answer shows Got it! button', pg.is_visible('#btn-next-q'))
+    asked = pg.evaluate("UI.state().mission.asked")
+    pg.wait_for_timeout(3500)   # longer than the old 3.2s auto-advance
+    ok('explanation stays up (no auto-advance)',
+       pg.evaluate("UI.state().mission.asked") == asked and 'Not quite' in pg.text_content('#q-feedback'))
+    pg.click('#btn-next-q')
+    ok('Got it! click advances and hides itself',
+       pg.evaluate("UI.state().mission.asked") == asked + 1 and not pg.is_visible('#btn-next-q'))
 
     # --- pause + quit banks sparks ---
     pg.click('#btn-pause')

@@ -82,6 +82,9 @@ interleaved practice that turns skills into fluency.
   got stronger!", "You used doubles — clever!"), per growth-mindset findings.
 - A wrong answer always shows the correct answer **with the visual model**
   (see it, not just read it), costs nothing but the star count, and re-queues.
+  The explanation **stays on screen indefinitely** — young readers need time —
+  and the mission only moves on when the child taps the **"Got it! ➡️"**
+  button (or presses Enter).
 
 ### 3b. Invention mini-games (the arcade layer)
 
@@ -141,7 +144,7 @@ progressively harder.
 | Recognition over recall | All options visible; icons + labels everywhere; no hidden gestures |
 | Flexibility & efficiency | Keyboard digits/Enter work on desktop; MCQ hotkeys 1–4; narration repeat button |
 | Aesthetic & minimalist | One question at a time, one action asked of the player |
-| Error recovery | Wrong answer → gentle sound, correct answer shown with the model, then a retry of the same fact later |
+| Error recovery | Wrong answer → gentle sound, correct answer + explanation shown with the model and left up until the child taps "Got it! ➡️" (self-paced reading), then a retry of the same fact later |
 | Help | Hint button on every question; Professor Gizmo demos on demand |
 
 ### Kosslyn science-of-learning principles → concrete features

@@ -277,7 +277,7 @@ UI.go('home'|'hall'|'progress'|'title'|<machineId>);   // navigate
 UI.start('rocket', 3);       // jump straight into a mission (unlocks to there)
 UI.question();               // {fact, text, prompt, answer, mode, options, retry, target}
 UI.answer(v);                // submit (returns true/false); works for MCQ + keypad
-UI.next();                   // skip the feedback delay (tests don't need to wait)
+UI.next();                   // advance past feedback (correct delay / wrong-answer Got it! wait)
 UI.state();                  // screen, sparks, mission progress, machines, facts…
 UI.grant({sparks, inventions, pieces, name, avatar}); // fixtures for hall/dashboard shots
 UI.export();                 // progress-file JSON (what the Save button downloads)
@@ -304,11 +304,15 @@ missed one re-queued, first-try 9/10 → star maths, level unlock, blueprint
 pieces, daily streak, per-fact stats.)
 
 To catch **feedback states** mid-flight, answer in `--setup` and use a short
-`--settle`: correct feedback lingers ~800 ms, wrong feedback ~3.2 s
-(`--settle 300` lands inside both).
+`--settle`: correct feedback lingers ~800 ms (`--settle 300` lands inside it).
+Wrong feedback never auto-advances — the explanation stays up with a
+**"Got it! ➡️"** button (`#btn-next-q`) until it's clicked (young readers set
+the pace), so wrong-answer screenshots are stable at any settle.
 
 **Real-input suite.** `tools/sparklab_test.py` drives the game the way a child
 does — real clicks on doors/options/keypad, physical keyboard digits + Enter,
+the wrong-answer flow (explanation + Got it! button must stay up past the old
+3.2 s auto-advance, and clicking it must advance),
 the press-and-hold grown-ups gear (a quick tap must *not* open it), pause/quit
 spark banking, a reload to prove `localStorage` persistence, a progress
 export→reset→import round-trip through the real file picker (the export button
@@ -316,7 +320,7 @@ must trigger a download; corrupt files must be rejected without touching
 state), and the arcade: all 10 mini-games must open, run their loop and end
 cleanly, best scores must persist, and The Impossible Challenge must stay
 locked until `inventions:10 + allLevels:true`, then pose questions whose
-correct answers damage the boss — 35 checks, must end `35/35` with no console
+correct answers damage the boss — 38 checks, must end `38/38` with no console
 errors:
 
 ```sh
@@ -351,6 +355,6 @@ Gotchas found during bring-up:
 ## Files
 
 - `tools/shoot.py` — the harness.
-- `tools/sparklab_test.py` — SparkLab real-input interaction suite (35 checks).
+- `tools/sparklab_test.py` — SparkLab real-input interaction suite (38 checks).
 - `tools/shots/` — screenshot output (gitignored).
 - `tools/selftest.html` — temporary stand-in for validating the harness.

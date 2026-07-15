@@ -221,6 +221,9 @@ input{font-family:inherit}
 #q-feedback{min-height:1.6em;font-weight:900;font-size:1.25rem}
 #q-feedback.good{color:var(--good)}
 #q-feedback.bad{color:var(--bad)}
+#btn-next-q{align-self:center;font-size:1.2rem;min-width:200px;
+  animation:nextpop .35s cubic-bezier(.2,1.4,.4,1)}
+@keyframes nextpop{from{transform:scale(.6);opacity:0}}
 .q-tools{position:absolute;top:10px;right:10px;display:flex;gap:8px}
 .q-tools .iconbtn{width:46px;height:46px;min-height:46px;font-size:1.2rem;
   background:rgba(255,255,255,.05);border-width:2px}
@@ -357,7 +360,7 @@ body.reduced .res-stars .star{transform:scale(1);animation:none}
 @media (prefers-reduced-motion: reduce){
   .bg-gear,.logo span,.inv-card.built .inv-art{animation:none!important}
   .screen.active{animation:none}
-  #qcard.correct,#qcard.wrong{animation:none}
+  #qcard.correct,#qcard.wrong,#btn-next-q{animation:none}
 }
 .no-fx *{animation:none!important;transition:none!important}
 
@@ -590,6 +593,7 @@ body.reduced .res-stars .star{transform:scale(1);animation:none}
       <div id="q-model"></div>
       <div id="q-text"></div>
       <div id="q-feedback"></div>
+      <button class="btn primary hidden" id="btn-next-q">Got it! ➡️</button>
     </div>
     <div id="answers"></div>
   </div>
@@ -1876,6 +1880,7 @@ function renderQuestion(q){
   $('q-prompt').textContent = (q.retry ? 'One more try! ' : '') + q.prompt;
   $('q-text').innerHTML = q.text ? q.text.replace('□', '<span class="blank" id="q-blank"></span>') : '';
   $('q-feedback').textContent = ''; $('q-feedback').className = '';
+  $('btn-next-q').classList.add('hidden');
   const modelHtml = q.model ? renderModel(q.model) : '';
   $('q-model').innerHTML = (q.showModel || q.retry) ? modelHtml : '';
   $('q-model').classList.toggle('hidden-model', !modelHtml || !(q.showModel || q.retry));
@@ -1951,9 +1956,8 @@ function submitAnswer(v, srcEl){
       MI.retriesAdded++;
       const p = document.createElement('span'); p.className = 'pip extra'; $('pips').appendChild(p);
     }
-    MI.advT = setTimeout(advance, 3200);
-    const skip = () => { $('qcard').removeEventListener('click', skip); if (MI && MI.lock) advance(); };
-    setTimeout(() => $('qcard').addEventListener('click', skip, { once: true }), 350);
+    /* no auto-advance: the explanation stays until the child taps Got it! */
+    $('btn-next-q').classList.remove('hidden');
   }
   save();
   return correct;
@@ -2203,6 +2207,7 @@ $('btn-hint').addEventListener('click', () => {
   $('q-model').classList.remove('hidden-model');
   $('btn-hint').disabled = true;
 });
+$('btn-next-q').addEventListener('click', () => { if (MI && MI.lock){ sfx.click(); advance(); } });
 $('btn-say').addEventListener('click', () => MI && MI.cur && say(MI.cur.tts, true));
 $('btn-pause').addEventListener('click', () => { sfx.click(); speech.stop(); $('ov-pause').classList.add('active'); });
 $('btn-resume').addEventListener('click', () => { sfx.click(); $('ov-pause').classList.remove('active'); });
@@ -2212,7 +2217,11 @@ $('btn-quit').addEventListener('click', () => {
   MI = null; renderHome(); show('home');
 });
 document.addEventListener('keydown', e => {
-  if (SCREEN !== 'mission' || !MI || MI.lock || !MI.cur) return;
+  if (SCREEN !== 'mission' || !MI || !MI.cur) return;
+  if (MI.lock){
+    if (e.key === 'Enter' && !e.repeat && !$('btn-next-q').classList.contains('hidden')){ sfx.click(); advance(); }
+    return;
+  }
   if (MI.cur.mode === 'mcq'){
     const i = '1234'.indexOf(e.key);
     const opts = document.querySelectorAll('.mcq .opt');
