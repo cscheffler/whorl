@@ -312,7 +312,8 @@ the pace), so wrong-answer screenshots are stable at any settle.
 **Real-input suite.** `tools/sparklab_test.py` drives the game the way a child
 does — real clicks on doors/options/keypad, physical keyboard digits + Enter,
 the wrong-answer flow (explanation + Got it! button must stay up past the old
-3.2 s auto-advance, and clicking it must advance),
+3.2 s auto-advance, and clicking it must advance, plus a generator audit that
+every wrong-answer hint template stays well-formed),
 the press-and-hold grown-ups gear (a quick tap must *not* open it), pause/quit
 spark banking, a reload to prove `localStorage` persistence, a progress
 export→reset→import round-trip through the real file picker (the export button
@@ -320,7 +321,7 @@ must trigger a download; corrupt files must be rejected without touching
 state), and the arcade: all 10 mini-games must open, run their loop and end
 cleanly, best scores must persist, and The Impossible Challenge must stay
 locked until `inventions:10 + allLevels:true`, then pose questions whose
-correct answers damage the boss — 38 checks, must end `38/38` with no console
+correct answers damage the boss — 39 checks, must end `39/39` with no console
 errors:
 
 ```sh
@@ -355,6 +356,6 @@ Gotchas found during bring-up:
 ## Files
 
 - `tools/shoot.py` — the harness.
-- `tools/sparklab_test.py` — SparkLab real-input interaction suite (38 checks).
+- `tools/sparklab_test.py` — SparkLab real-input interaction suite (39 checks).
 - `tools/shots/` — screenshot output (gitignored).
 - `tools/selftest.html` — temporary stand-in for validating the harness.

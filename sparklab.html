@@ -914,6 +914,14 @@ function mkOptions(ans, cands, count = 4){
   return shuffle(set);
 }
 
+/* hint helpers — brief strategy hints for wrong answers */
+const seqUp = (from, n, step = 1) => Array.from({ length: n }, (_, i) => from + (i + 1) * step).join(', ');
+const seqDown = (from, n) => Array.from({ length: n }, (_, i) => from - (i + 1)).join(', ');
+const frameHint = (a, ans, total) =>
+  ans === 0 ? `The frame is already full, so nothing more is needed.` :
+  a === 0   ? `The frame is empty — it needs all ${total}.` :
+              `Count the empty spaces: ${a} filled and ${ans} empty make ${total}.`;
+
 /* ---------- generators per machine ---------- */
 const GEN = {};
 
@@ -924,21 +932,24 @@ GEN.power = [
         text:`${a} + ${B} = ${total}`, tts:`${a} plus what makes ${total}?`,
         prompt:'Fill the power cell!', options:mkOptions(ans, [total, a], 3),
         model:{ t:'tenframe', total, a, op:'miss' }, showModel:true,
-        explain:`${a} and ${ans} make ${total}.` };
+        explain: frameHint(a, ans, total) };
     } },
   { name:'Make 10 — from memory!', target:6000, gen(){
       const a = ri(0, 10), ans = 10 - a;
       return { fact:`bond10:${a}`, answer:ans, mode:'pad',
         text:`${a} + ${B} = 10`, tts:`${a} plus what makes 10?`,
         prompt:'Fill the power cell!', model:{ t:'tenframe', total:10, a, op:'miss' },
-        showModel:false, explain:`${a} and ${ans} make 10.` };
+        showModel:false, explain: frameHint(a, ans, 10) };
     } },
   { name:'Make 20', target:8000, gen(){
       const a = ri(1, 19), ans = 20 - a;
       return { fact:`bond20:${a}`, answer:ans, mode:'pad',
         text:`${a} + ${B} = 20`, tts:`${a} plus what makes 20?`,
         prompt:'Fill the DOUBLE power cell!', model:{ t:'tenframe', total:20, a, op:'miss' },
-        showModel:false, explain:`${a} and ${ans} make 20.` };
+        showModel:false,
+        explain: a === 10 ? `10 and 10 make 20 — double 10.` :
+                 a < 10  ? `${a} + ${10 - a} makes 10, then 10 more makes 20 — so ${ans}.` :
+                           `${a % 10} + ${ans} makes 10, so ${a} + ${ans} reaches 20.` };
     } },
   { name:'Make the next ten', target:9000, gen(){
       const tens = ri(1, 8), ones = ri(1, 9), n = tens * 10 + ones,
@@ -947,14 +958,14 @@ GEN.power = [
         text:`${n} + ${B} = ${next}`, tts:`${n} plus what makes ${next}?`,
         prompt:'Charge up to the next ten!',
         model:{ t:'numline', from:tens * 10, to:next, hops:[[n, next]] },
-        showModel:false, explain:`${n} needs ${ans} more to reach ${next}.` };
+        showModel:false, explain:`Look at the ones: ${ones} + ${ans} = 10, so ${n} + ${ans} = ${next}.` };
     } },
   { name:'Make 100 (tens)', target:9000, gen(){
       const a = 10 * ri(1, 9), ans = 100 - a;
       return { fact:`bond100:${a}`, answer:ans, mode:'pad',
         text:`${a} + ${B} = 100`, tts:`${a} plus what makes 100?`,
         prompt:'Fill the MEGA cell!', model:{ t:'tens', have:a / 10, total:10 },
-        showModel:false, explain:`${a / 10} tens and ${ans / 10} tens make 10 tens — that's 100.` };
+        showModel:false, explain:`Think in tens: ${a / 10} + ${ans / 10} = 10, and 10 tens make 100.` };
     } },
 ];
 
@@ -966,16 +977,19 @@ GEN.rocket = [
         text:`${a} + ${b} = ${B}`, tts:`${a} plus ${b}?`, prompt:'Mix the rocket fuel!',
         options:mkOptions(ans, [ans + 1, ans - 1, a, b]),
         model:{ t:'tenframe', total:10, a, b, op:'add' }, showModel:true,
-        explain:`${a} and ${b} make ${ans}.` };
+        explain:`Start with the bigger number, ${hi}, and count on ${lo}: ${seqUp(hi, lo)}.` };
     } },
   { name:'Add within 20', target:8000, gen(){
       const a = ri(3, 12), b = ri(2, Math.min(8, 20 - a)), ans = a + b;
       const [hi, lo] = a >= b ? [a, b] : [b, a];
+      const o = hi % 10;
       return { fact:`add:${hi}+${lo}`, answer:ans, mode:'mcq',
         text:`${a} + ${b} = ${B}`, tts:`${a} plus ${b}?`, prompt:'Mix the rocket fuel!',
         options:mkOptions(ans, [ans + 1, ans - 1, ans + 2]),
         model:{ t:'numline', from:0, to:20, hops:[[a, ans]] }, showModel:true,
-        explain:`Start at ${a} and count on ${b}: ${ans}.` };
+        explain: o + lo === 10 ? `${o} + ${lo} makes a full ten, so ${hi} + ${lo} lands on ${ans}.` :
+                 o + lo > 10  ? `${hi} + ${10 - o} makes 10, then ${lo - (10 - o)} more makes ${ans}.` :
+                                `Start at ${hi} and count on ${lo}: ${seqUp(hi, lo)}.` };
     } },
   { name:'Bridge through 10', target:9000, gen(){
       const a = ri(6, 9), b = ri(11 - a, 9), ans = a + b, k = 10 - a;
@@ -983,24 +997,27 @@ GEN.rocket = [
         text:`${a} + ${b} = ${B}`, tts:`${a} plus ${b}?`, prompt:'Blast past 10!',
         model:{ t:'numline', from:Math.max(0, a - 2), to:ans + 2, hops:[[a, 10], [10, ans]] },
         showModel:false,
-        explain:`${a} + ${k} makes 10, then ${b - k} more makes ${ans}.` };
+        explain:`Split ${b} into ${k} and ${b - k}: ${a} + ${k} makes 10, then ${b - k} more makes ${ans}.` };
     } },
   { name:'Big number + small', target:10000, gen(){
       const A = ri(12, 89), b = ri(2, 9), ans = A + b, k = 10 - (A % 10);
       const crosses = (A % 10) + b > 10;
+      const o = A % 10;
       return { fact:`addb:${A}+${b}`, answer:ans, mode:'pad',
         text:`${A} + ${b} = ${B}`, tts:`${A} plus ${b}?`, prompt:'Boost the big tank!',
         model:{ t:'numline', from:A - 1, to:ans + 2, hops: crosses ? [[A, A + k], [A + k, ans]] : [[A, ans]] },
         showModel:false,
-        explain: crosses ? `${A} + ${k} makes ${A + k}, then ${b - k} more makes ${ans}.`
-                         : `Just add the ones: ${A % 10} + ${b} = ${A % 10 + b}, so ${ans}.` };
+        explain: crosses      ? `Split ${b} into ${k} and ${b - k}: ${A} + ${k} makes ${A + k}, then ${b - k} more makes ${ans}.` :
+                 o + b === 10 ? `${o} + ${b} makes a full ten, so ${A} jumps up to ${ans}.` :
+                 o === 0      ? `${A} is whole tens — just add the ${b} ones: ${ans}.` :
+                                `Just add the ones: ${o} + ${b} = ${o + b}, so ${ans} — the tens don't change.` };
     } },
   { name:'Add the tens', target:9000, gen(){
       const A = ri(12, 79), b = 10 * ri(1, Math.floor((99 - A) / 10)), ans = A + b;
       return { fact:`addT:${A}+${b}`, answer:ans, mode:'pad',
         text:`${A} + ${b} = ${B}`, tts:`${A} plus ${b}?`, prompt:'Add whole tens!',
         model:{ t:'rods2', a:A, b:b, op:'+' }, showModel:false,
-        explain:`Only the tens change: ${A} → ${ans}. The ones stay ${A % 10}.` };
+        explain:`Add tens to tens: ${Math.floor(A / 10) * 10} + ${b} = ${Math.floor(ans / 10) * 10}, and the ones stay ${A % 10}: ${ans}.` };
     } },
   { name:'Big + big', target:14000, gen(){
       const A = ri(12, 79), Bb = ri(11, 99 - A), ans = A + Bb;
@@ -1008,7 +1025,9 @@ GEN.rocket = [
       return { fact:`add2:${A}+${Bb}`, answer:ans, mode:'pad',
         text:`${A} + ${Bb} = ${B}`, tts:`${A} plus ${Bb}?`, prompt:'Maximum fuel!',
         model:{ t:'rods2', a:A, b:Bb, op:'+' }, showModel:false,
-        explain:`Tens: ${t}. Ones: ${o}. Together: ${ans}.` };
+        explain: (A % 10 === 0 && Bb % 10 === 0) ? `Add the tens first: ${Math.floor(A / 10) * 10} + ${Math.floor(Bb / 10) * 10} = ${t}. Both are whole tens, so the ones stay 0: ${ans}.` :
+                 (A % 10 === 0 || Bb % 10 === 0) ? `Add the tens first: ${Math.floor(A / 10) * 10} + ${Math.floor(Bb / 10) * 10} = ${t}. The ones stay ${o}, so ${t} + ${o} = ${ans}.` :
+                 `Add the tens first: ${Math.floor(A / 10) * 10} + ${Math.floor(Bb / 10) * 10} = ${t}. Then the ones: ${A % 10} + ${Bb % 10} = ${o}. And ${t} + ${o} = ${ans}.` };
     } },
 ];
 
@@ -1019,15 +1038,19 @@ GEN.shrink = [
         text:`${a} − ${b} = ${B}`, tts:`${a} take away ${b}?`, prompt:'Zap it smaller!',
         options:mkOptions(ans, [ans + 1, ans - 1, a + b]),
         model:{ t:'tenframe', total:10, a, b, op:'sub' }, showModel:true,
-        explain:`${a} take away ${b} leaves ${ans}.` };
+        explain:`Cross out ${b} of the ${a} dots — count what's left: ${ans}.` };
     } },
   { name:'Take away within 20', target:8000, gen(){
       const a = ri(11, 20), b = ri(2, 9), ans = a - b;
+      const k = a - 10;
       return { fact:`sub:${a}-${b}`, answer:ans, mode:'mcq',
         text:`${a} − ${b} = ${B}`, tts:`${a} take away ${b}?`, prompt:'Zap it smaller!',
         options:mkOptions(ans, [ans + 1, ans - 1, ans + 10]),
         model:{ t:'numline', from:Math.max(0, ans - 2), to:a + 1, hops:[[a, ans]] }, showModel:true,
-        explain:`Start at ${a} and count back ${b}: ${ans}.` };
+        explain: b === k ? `${a} take away ${b} lands right on 10.` :
+                 b > k  ? `${a} take ${k} makes 10, then take ${b - k} more: ${ans}.` :
+                 b <= 5 ? `Start at ${a} and count back ${b}: ${seqDown(a, b)}.` :
+                          `Take a whole 10, then put ${10 - b} back: ${a} − 10 = ${a - 10}, + ${10 - b} = ${ans}.` };
     } },
   { name:'Bridge back through 10', target:9000, gen(){
       const a = ri(11, 16), b = ri(a - 9, 9), ans = a - b, k = a - 10;
@@ -1035,7 +1058,7 @@ GEN.shrink = [
         text:`${a} − ${b} = ${B}`, tts:`${a} take away ${b}?`, prompt:'Shrink past 10!',
         model:{ t:'numline', from:Math.max(0, ans - 2), to:a + 1, hops:[[a, 10], [10, ans]] },
         showModel:false,
-        explain:`${a} take ${k} makes 10, take ${b - k} more makes ${ans}.` };
+        explain:`Split ${b} into ${k} and ${b - k}: ${a} take ${k} makes 10, take ${b - k} more makes ${ans}.` };
     } },
   { name:'Big number − small', target:10000, gen(){
       const A = ri(12, 99), b = ri(2, 9), ans = A - b, k = A % 10;
@@ -1044,23 +1067,31 @@ GEN.shrink = [
         text:`${A} − ${b} = ${B}`, tts:`${A} take away ${b}?`, prompt:'Shrink the big one!',
         model:{ t:'numline', from:ans - 2, to:A + 1, hops: crosses ? [[A, A - k], [A - k, ans]] : [[A, ans]] },
         showModel:false,
-        explain: crosses ? `${A} take ${k} makes ${A - k}, take ${b - k} more makes ${ans}.`
-                         : `Just the ones: ${k} − ${b} = ${k - b}, so ${ans}.` };
+        explain: k === 0 ? `Open one ten: 10 − ${b} = ${10 - b}, so ${A} − ${b} = ${ans}.` :
+                 crosses ? `Split ${b} into ${k} and ${b - k}: ${A} take ${k} makes ${A - k}, take ${b - k} more makes ${ans}.` :
+                           `Just the ones: ${k} − ${b} = ${k - b}, so ${ans} — the tens don't change.` };
     } },
   { name:'Take away tens', target:9000, gen(){
       const A = ri(30, 99), b = 10 * ri(1, Math.floor((A - 10) / 10)), ans = A - b;
       return { fact:`subT:${A}-${b}`, answer:ans, mode:'pad',
         text:`${A} − ${b} = ${B}`, tts:`${A} take away ${b}?`, prompt:'Shrink whole tens!',
         model:{ t:'rods2', a:A, b:b, op:'−' }, showModel:false,
-        explain:`Only the tens change: ${A} → ${ans}. The ones stay ${A % 10}.` };
+        explain:`Take tens from tens: ${Math.floor(A / 10) * 10} − ${b} = ${Math.floor(ans / 10) * 10}, and the ones stay ${A % 10}: ${ans}.` };
     } },
   { name:'Find the difference', target:12000, gen(){
       const a = ri(18, 89), d = ri(3, 12), b2 = a + d;
+      const o = a % 10, kk = 10 - o;
+      const explain =
+        Math.floor(a / 10) === Math.floor(b2 / 10) ? `Count up from ${a}: ${seqUp(a, d)} — that's ${d} hops.` :
+        o === 0  ? (d === 10 ? `${a} up to ${b2} is exactly one whole ten: 10.`
+                             : `Jump a ten first: ${a} + 10 = ${a + 10}, then ${d - 10} more — 10 + ${d - 10} = ${d}.`) :
+        d === kk ? `${a} needs just ${kk} to reach the ten: ${seqUp(a, kk)}.` :
+                   `${a} + ${kk} gets to ${a + kk}, then ${d - kk} more to ${b2} — ${kk} + ${d - kk} = ${d}.`;
       return { fact:`diff:${a}>${b2}`, answer:d, mode:'pad',
         text:`${a} + ${B} = ${b2}`, tts:`How far is it from ${a} up to ${b2}?`,
         prompt:'How big is the jump?',
         model:{ t:'numline', from:a - 1, to:b2 + 1, hops:[[a, b2]] }, showModel:false,
-        explain:`Count on from ${a} to ${b2} — that's a jump of ${d}.` };
+        explain };
     } },
 ];
 
@@ -1071,27 +1102,31 @@ GEN.clone = [
         text:`${n} + ${n} = ${B}`, tts:`Double ${n}?`, prompt:'Clone it!',
         options:mkOptions(ans, [ans + 1, ans - 1, n]),
         model:{ t:'twins', n }, showModel:true,
-        explain:`Double ${n} is ${ans}.` };
+        explain:`Count on ${n} more from ${n}: ${seqUp(n, n)}.` };
     } },
   { name:'Doubles & halves to 20', target:8000, gen(){
       if (rng() < .5){
         const n = ri(4, 10), ans = n * 2;
         return { fact:`dbl:${n}`, answer:ans, mode:'pad',
           text:`Double ${n} = ${B}`, tts:`Double ${n}?`, prompt:'Clone it!',
-          model:{ t:'twins', n }, showModel:false, explain:`Double ${n} is ${ans}.` };
+          model:{ t:'twins', n }, showModel:false,
+          explain: n === 10 ? `Double 10 is 2 tens: 20.` :
+                   n === 5  ? `5 + 5 is two full hands: 10.` :
+                   n >= 6   ? `${n} is 5 + ${n - 5}, so double ${n} is 10 + ${2 * (n - 5)} = ${ans}.` :
+                              `Count on ${n} more from ${n}: ${seqUp(n, n)}.` };
       }
       const m = 2 * ri(2, 10);
       return { fact:`half:${m}`, answer:m / 2, mode:'pad',
         text:`Half of ${m} = ${B}`, tts:`What is half of ${m}?`, prompt:'Split it in two!',
         model:{ t:'twins', n:m / 2 }, showModel:false,
-        explain:`${m / 2} and ${m / 2} make ${m}, so half of ${m} is ${m / 2}.` };
+        explain:`Halving undoes doubling: ${m / 2} + ${m / 2} = ${m}, so half of ${m} is ${m / 2}.` };
     } },
   { name:'Near doubles', target:9000, gen(){
       const n = ri(3, 9), ans = n * 2 + 1;
       return { fact:`near:${n}`, answer:ans, mode:'pad',
         text:`${n} + ${n + 1} = ${B}`, tts:`${n} plus ${n + 1}?`, prompt:'A clone… plus one!',
         model:{ t:'twins', n, extra:1 }, showModel:false,
-        explain:`Double ${n} is ${n * 2}, and one more makes ${ans}.` };
+        explain:`${n + 1} is one more than ${n}, so double ${n} first (${n * 2}), then add 1: ${ans}.` };
     } },
   { name:'Double & halve tens', target:9000, gen(){
       if (rng() < .5){
@@ -1099,13 +1134,13 @@ GEN.clone = [
         return { fact:`dblT:${t}`, answer:ans, mode:'pad',
           text:`Double ${t} = ${B}`, tts:`Double ${t}?`, prompt:'Clone the tens!',
           model:{ t:'tens', have:t / 10, total:t / 5 }, showModel:false,
-          explain:`Double ${t / 10} tens is ${t / 5} tens — ${ans}.` };
+          explain:`Think small first: double ${t / 10} is ${t / 5}, so double ${t / 10} tens is ${t / 5} tens — ${ans}.` };
       }
       const m = pick([20, 40, 60, 80, 100]);
       return { fact:`halfT:${m}`, answer:m / 2, mode:'pad',
         text:`Half of ${m} = ${B}`, tts:`What is half of ${m}?`, prompt:'Split the tens!',
         model:{ t:'tens', have:m / 10, total:m / 10 }, showModel:false,
-        explain:`Half of ${m / 10} tens is ${m / 20} tens — ${m / 2}.` };
+        explain:`Think small first: half of ${m / 10} is ${m / 20}, so half of ${m} is ${m / 2}.` };
     } },
 ];
 
@@ -1118,7 +1153,7 @@ GEN.gears = [
         prompt:'Keep the gears turning!',
         options:mkOptions(ans, [ans + step, ans - step, ans + 1]),
         model:{ t:'belt', seq }, showModel:true,
-        explain:`Counting in ${step}s — add ${step} each time: ${ans}.` };
+        explain:`Every jump adds ${step}: ${seq[3]} + ${step} = ${ans}.` };
     } },
   { name:'Tricky counting', target:9000, gen(){
       if (rng() < .5){ // backwards
@@ -1129,7 +1164,7 @@ GEN.gears = [
           prompt:'The gears spin backwards!',
           options:mkOptions(ans, [ans + step, ans - step, ans + 1]),
           model:{ t:'belt', seq }, showModel:true,
-          explain:`Going down in ${step}s — take ${step} each time: ${ans}.` };
+          explain:`Every jump takes ${step} away: ${seq[3]} − ${step} = ${ans}.` };
       }
       const start = 2 * ri(0, 3) + 1; // odd start, 2s
       const seq = [0, 1, 2, 3].map(i => start + i * 2), ans = start + 8;
@@ -1138,7 +1173,7 @@ GEN.gears = [
         prompt:'Odd jumps!',
         options:mkOptions(ans, [ans + 2, ans - 2, ans + 1]),
         model:{ t:'belt', seq }, showModel:true,
-        explain:`Still adding 2 each time — the odd numbers: ${ans}.` };
+        explain:`Odd numbers jump in 2s too: ${seq[3]} + 2 = ${ans}.` };
     } },
   { name:'The 2 times table', target:8000, gen(){
       const n = ri(1, 10), flip = rng() < .5, ans = 2 * n;
@@ -1146,7 +1181,7 @@ GEN.gears = [
         text: flip ? `${n} × 2 = ${B}` : `2 × ${n} = ${B}`,
         tts:`${flip ? n + ' times 2' : '2 times ' + n}?`, prompt:'Rows of gears!',
         model:{ t:'array', rows:2, cols:n }, showModel:true,
-        explain:`2 rows of ${n} makes ${ans}.` };
+        explain:`2 × ${n} is double ${n}: ${n} + ${n} = ${ans}.` };
     } },
   { name:'The 10 times table', target:7000, gen(){
       const n = ri(1, 10), flip = rng() < .5, ans = 10 * n;
@@ -1154,7 +1189,8 @@ GEN.gears = [
         text: flip ? `${n} × 10 = ${B}` : `10 × ${n} = ${B}`,
         tts:`${flip ? n + ' times 10' : '10 times ' + n}?`, prompt:'Ten-packs!',
         model:{ t:'tens', have:n, total:n }, showModel:false,
-        explain:`${n} tens make ${ans}.` };
+        explain: n === 10 ? `10 tens make 100.` :
+                            `${n} × 10 is ${n} tens — ${n} in the tens place, 0 ones: ${ans}.` };
     } },
   { name:'The 5 times table', target:8000, gen(){
       const n = ri(1, 10), flip = rng() < .5, ans = 5 * n;
@@ -1162,7 +1198,8 @@ GEN.gears = [
         text: flip ? `${n} × 5 = ${B}` : `5 × ${n} = ${B}`,
         tts:`${flip ? n + ' times 5' : '5 times ' + n}?`, prompt:'High fives!',
         model:{ t:'array', rows:5, cols:n }, showModel:false,
-        explain:`Count in 5s, ${n} times: ${ans}.` };
+        explain: n <= 5 ? `Count in 5s: ${seqUp(0, n, 5)}.` :
+                          `${n} tens is ${n * 10}, and 5s are half of tens: half of ${n * 10} is ${ans}.` };
     } },
   { name:'Share it out', target:12000, gen(){
       const k = pick([2, 5, 10]), q = ri(2, 10), t = k * q;
@@ -1182,7 +1219,7 @@ GEN.circuit = [
         tts:`What plus ${a} makes ${s}?`, prompt:'Fix the circuit!',
         options:mkOptions(ans, [s, a, ans + 1]),
         model:{ t:'tenframe', total:s, a, op:'miss' }, showModel:true,
-        explain:`${a} and ${ans} make ${s}.` };
+        explain: frameHint(a, ans, s) };
     } },
   { name:'Missing piece (to 20)', target:10000, gen(){
       const ans = ri(2, 12), a = ri(2, Math.min(9, 20 - ans)), s = a + ans;
@@ -1193,7 +1230,9 @@ GEN.circuit = [
       return { fact:`miss:${a}+?=${s}`, answer:ans, mode:'pad',
         text, tts, prompt:'Fix the circuit!',
         model:{ t:'numline', from:0, to:s + 1, hops:[[a, s]] }, showModel:false,
-        explain:`${a} and ${ans} make ${s}.` };
+        explain: s === 10 ? `It's a bond to 10: ${a} + ${ans} = 10.` :
+                 s < 10  ? `Count up from ${a} to ${s}: ${seqUp(a, ans)} — ${ans} hops.` :
+                           `${a} + ${10 - a} makes 10, then ${s - 10} more makes ${s} — so the piece is ${ans}.` };
     } },
   { name:'Number families', target:9000, gen(){
       const a = ri(2, 9), b = ri(2, 9), c = a + b, form = ri(0, 2);
@@ -1204,7 +1243,7 @@ GEN.circuit = [
       return { fact:`fam:${Math.min(a,b)},${Math.max(a,b)},${c}`, answer:ans, mode:'pad',
         text, tts, prompt:'Use the number family!',
         model:{ t:'family', a, b, c }, showModel:true,
-        explain:`${a}, ${b} and ${c} are a family: ${a} + ${b} = ${c}.` };
+        explain:`Fact family: ${a} + ${b} = ${c}, so ` + (form === 0 ? `${c} − ${a} = ${b}.` : form === 1 ? `${c} − ${b} = ${a}.` : `${b} + ${a} = ${c} too.`) };
     } },
   { name:'Balance both sides', target:12000, gen(){
       const c = ri(2, 9), d = ri(2, 9), s = c + d, a = ri(1, s - 1), ans = s - a;
@@ -1220,7 +1259,8 @@ GEN.circuit = [
         text:`${k} × ${B} = ${t}`, tts:`${k} times what makes ${t}?`,
         prompt:'Fix the gear ratio!',
         model:{ t:'array', rows:k === 10 ? 5 : k, cols:ans }, showModel:false,
-        explain:`Count in ${k}s up to ${t} — that's ${ans} jumps.` };
+        explain: ans <= 6 ? `Count in ${k}s to ${t}: ${seqUp(0, ans, k)} — ${ans} jumps.` :
+                            `Count in ${k}s up to ${t} — that's ${ans} jumps.` };
     } },
 ];
 
@@ -1231,15 +1271,18 @@ GEN.scan = [
         text:`${t} tens + ${o} ones = ${B}`, tts:`${t} tens and ${o} ones make what number?`,
         prompt:'Read the scanner!',
         model:{ t:'rods', tens:t, ones:o }, showModel:true,
-        explain:`${t} tens make ${t * 10}, and ${o} ones make ${ans}.` };
+        explain: o === 0 ? `${t} tens make ${t * 10} and there are no ones — ${ans}.` :
+                           `${t} tens make ${t * 10}, then ${o} ones on top: ${t * 10} + ${o} = ${ans}.` };
     } },
   { name:'Ten more, ten less', target:7000, gen(){
       const n = ri(11, 89), plus = rng() < .5, ans = plus ? n + 10 : n - 10;
+      const td = Math.floor(n / 10), o = n % 10;
       return { fact:`pm10:${n}${plus ? '+' : '-'}`, answer:ans, mode:'pad',
         text:`${n} ${plus ? '+' : '−'} 10 = ${B}`, tts:`${n} ${plus ? 'plus' : 'take away'} 10?`,
         prompt:'Jump a whole ten!',
         model:{ t:'rods', tens:Math.floor(n / 10), ones:n % 10 }, showModel:false,
-        explain:`Only the tens digit changes: ${n} → ${ans}.` };
+        explain: plus ? `Ten more is one more ten: the tens digit goes from ${td} to ${td + 1}, ones stay ${o} — ${ans}.`
+                      : `Ten less is one ten fewer: the tens digit goes from ${td} to ${td - 1}, ones stay ${o} — ${ans}.` };
     } },
   { name:'Which is bigger?', target:6000, gen(){
       const kind = ri(0, 2);
@@ -1248,28 +1291,36 @@ GEN.scan = [
       else if (kind === 1){ const x = ri(1, 9), y = ri(1, 9); a = x * 10 + y; b2 = y * 10 + x; if (a === b2) b2 += 11; }
       else { a = ri(10, 99); do { b2 = ri(10, 99); } while (b2 === a); }
       const ans = Math.max(a, b2);
+      const lo2 = a + b2 - ans, th = Math.floor(ans / 10), tl = Math.floor(lo2 / 10);
       return { fact:`cmp:${Math.min(a,b2)}v${Math.max(a,b2)}`, answer:ans, mode:'mcq',
         text:``, tts:`Which is bigger: ${a} or ${b2}?`, prompt:'Which number is bigger?',
         options:[a, b2], model:null, showModel:false,
-        explain:`Compare tens first: ${Math.floor(ans / 10)} tens beats ${Math.floor((a + b2 - ans) / 10)} tens${Math.floor(a/10)===Math.floor(b2/10) ? ' — same tens, so check the ones' : ''}. ${ans} is bigger.` };
+        explain: th === tl ? `Same tens (${th}), so check the ones: ${ans % 10} beats ${lo2 % 10} — ${ans} is bigger.`
+                           : `Tens first: ${th} tens beats ${tl} tens, so ${ans} is bigger — the ones can't catch up.` };
     } },
   { name:'Smallest or biggest?', target:8000, gen(){
       const set = new Set(); while (set.size < 3) set.add(ri(10, 99));
       const nums = shuffle([...set]), small = rng() < .5;
       const ans = small ? Math.min(...nums) : Math.max(...nums);
+      const t3 = nums.map(x => Math.floor(x / 10)), ta = Math.floor(ans / 10), tied = t3.filter(x => x === ta).length;
       return { fact:`ord:${[...set].sort((x,y)=>x-y).join(',')}`, answer:ans, mode:'mcq',
         text:``, tts:`Tap the ${small ? 'smallest' : 'biggest'}: ${nums.join(', ')}.`,
         prompt:`Tap the ${small ? 'SMALLEST' : 'BIGGEST'} number!`,
         options:nums, model:null, showModel:false,
-        explain:`Compare the tens first, then the ones. The ${small ? 'smallest' : 'biggest'} is ${ans}.` };
+        explain: tied === 1 ? `Look at the tens: ${t3.join(', ')} — ${ta} tens is the ${small ? 'fewest' : 'most'}, so ${ans}.`
+                            : `${tied === 3 ? 'All three' : 'Two'} have ${ta} tens — so their ones decide: ${ans} is the ${small ? 'smallest' : 'biggest'}.` };
     } },
   { name:'Odd or even?', target:5000, gen(){
       const n = ri(1, 99), ans = n % 2 ? 'Odd' : 'Even';
+      const d = n % 10;
       return { fact:`oe:${n}`, answer:ans, mode:'mcq',
         text:`${n}`, tts:`Is ${n} odd or even?`, prompt:'Odd or even?',
         options: rng() < .5 ? ['Odd', 'Even'] : ['Even', 'Odd'],
         model:null, showModel:false,
-        explain:`Look at the last digit: ${n % 10} — so ${n} is ${ans.toLowerCase()}.` };
+        explain: n < 10  ? (n % 2 ? `Try pairing ${n} up — one is always left over, so it's odd.`
+                                  : `${n} splits into pairs with none left over, so it's even.`)
+               : d === 0 ? `It ends in 0 — whole tens split into pairs, so ${n} is even.`
+               :           `Only the ones digit matters: ${d} is ${d % 2 ? 'odd' : 'even'}, so ${n} is ${ans.toLowerCase()}.` };
     } },
 ];
 

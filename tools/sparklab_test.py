@@ -91,6 +91,24 @@ with sync_playwright() as p:
     st = pg.evaluate("UI.state()")
     ok('keypad taps submit correct answer', st['mission']['streak'] == 2)
 
+    # --- hint audit: every generator's explain stays well-formed ---
+    bad = pg.evaluate("""(() => {
+      const out = [];
+      UI.seed(7);
+      for (const [mid, levels] of Object.entries(GEN))
+        levels.forEach((lv, i) => {
+          for (let t = 0; t < 300; t++){
+            const e = String(lv.gen().explain);
+            if (!e || /undefined|NaN|\\b0 more\\b|take 0\\b|\\+ 0\\b|− 0\\b/.test(e)){
+              out.push(mid + ':' + (i + 1) + ' -> ' + e); break;
+            }
+          }
+        });
+      return out;
+    })()""")
+    ok('hint audit: no broken or zero-step hints in any generator', not bad)
+    if bad: print('   bad hints:', bad[:5])
+
     # --- persistence across reload ---
     sparks = pg.evaluate("UI.state().sparks")
     pg.reload(wait_until='load')

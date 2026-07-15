@@ -84,7 +84,9 @@ interleaved practice that turns skills into fluency.
   (see it, not just read it), costs nothing but the star count, and re-queues.
   The explanation **stays on screen indefinitely** — young readers need time —
   and the mission only moves on when the child taps the **"Got it! ➡️"**
-  button (or presses Enter).
+  button (or presses Enter). Every hint names an age-appropriate strategy
+  (count on from the bigger number, bridge through ten, fact families, place
+  value) rather than restating the answer.
 
 ### 3b. Invention mini-games (the arcade layer)
 
